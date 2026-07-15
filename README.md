@@ -14,12 +14,14 @@
 - Text nodes keep their content, font family, weight, size, color, alignment, line height, letter spacing, and case.
 - Vectors and icons are inlined as SVG. Image fills export as PNG data URIs.
 - Fonts used by text are emitted as a Google Fonts `<link>`. Non-Google families fall back gracefully.
+- Export as plain CSS, or as Tailwind utility classes. Tailwind output is one self-contained file that loads the Tailwind v4 browser CDN, with the styles mapped to utilities (arbitrary values keep the exact pixels and colors).
 
 ## Using it
 
 1. Select a frame, component, instance, or group.
-2. Run the plugin and click **Export selected frame**.
-3. Copy the code or download the `.html` file.
+2. Pick **CSS** or **Tailwind** styling.
+3. Run the plugin and click **Export selected frame**.
+4. Copy the code or download the `.html` file.
 
 ## Development
 

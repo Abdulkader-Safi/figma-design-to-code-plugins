@@ -5,7 +5,11 @@
 
 figma.showUI(__html__, { width: 480, height: 660, themeColors: true });
 
-figma.ui.onmessage = async (msg: { type: string; semantic?: boolean }) => {
+figma.ui.onmessage = async (msg: {
+  type: string;
+  semantic?: boolean;
+  tailwind?: boolean;
+}) => {
   if (msg.type !== "export") return;
 
   const sel = figma.currentPage.selection;
@@ -25,7 +29,10 @@ figma.ui.onmessage = async (msg: { type: string; semantic?: boolean }) => {
   }
 
   try {
-    const out = await generate(root, { semantic: msg.semantic !== false });
+    const out = await generate(root, {
+      semantic: msg.semantic !== false,
+      tailwind: msg.tailwind === true,
+    });
     figma.ui.postMessage({
       type: "result",
       name: sanitizeFileName(root.name),
@@ -47,7 +54,7 @@ type Rule = { [prop: string]: string | number };
 
 async function generate(
   root: SceneNode,
-  opts: { semantic: boolean },
+  opts: { semantic: boolean; tailwind: boolean },
 ): Promise<{ combined: string; html: string; css: string }> {
   const cssRules: string[] = [];
   const fonts = new Map<string, Set<number>>(); // family -> weights
@@ -82,6 +89,20 @@ async function generate(
     if (body) cssRules.push(`.${cls} {\n${body}\n}`);
   };
 
+  // Returns the value for a class="" attribute. In CSS mode it registers the rule
+  // and returns the class name. In Tailwind mode it returns utility classes; when
+  // keepClass is set (a section with a ::before bleed) it keeps the class name too
+  // so the generated ::before rule still has a selector to target.
+  const emitClass = (cls: string, rule: Rule, keepClass = false): string => {
+    if (!opts.tailwind) {
+      pushRule(cls, rule);
+      return cls;
+    }
+    const tw = toTailwind(rule);
+    if (keepClass) return tw ? `${cls} ${tw}` : cls;
+    return tw;
+  };
+
   const addFont = (family: string, weight: number) => {
     if (!fonts.has(family)) fonts.set(family, new Set());
     fonts.get(family)!.add(weight);
@@ -99,6 +120,7 @@ async function generate(
     const cls = className(node);
     const indent = "  ".repeat(depth);
     const rule: Rule = {};
+    let hasBefore = false; // set when this node gets a full-bleed ::before rule
     const absolute = parent !== null && !isAutoLayout(parent);
     // Direct children of a list become list items.
     const inList = parentTag === "ul" || parentTag === "ol";
@@ -124,8 +146,7 @@ async function generate(
       } catch {
         /* fall through to empty box */
       }
-      pushRule(cls, rule);
-      return `${indent}<div class="${cls}">${svg}</div>`;
+      return `${indent}<div class="${emitClass(cls, rule)}">${svg}</div>`;
     }
 
     // Image fills: export the node as a PNG and drop it in as an <img>.
@@ -138,11 +159,9 @@ async function generate(
         });
         const b64 = figma.base64Encode(bytes);
         rule["object-fit"] = "cover";
-        pushRule(cls, rule);
-        return `${indent}<img class="${cls}" src="data:image/png;base64,${b64}" alt="${escapeHtml(node.name)}" />`;
+        return `${indent}<img class="${emitClass(cls, rule)}" src="data:image/png;base64,${b64}" alt="${escapeHtml(node.name)}" />`;
       } catch {
-        pushRule(cls, rule);
-        return `${indent}<div class="${cls}"></div>`;
+        return `${indent}<div class="${emitClass(cls, rule)}"></div>`;
       }
     }
 
@@ -172,13 +191,12 @@ async function generate(
             const scls = `${cls}-r${i}`;
             const srule: Rule = {};
             styleRule(seg, srule, addFont);
-            pushRule(scls, srule);
-            return `<span class="${scls}">${escapeHtml(seg.characters).replace(/\n/g, "<br>")}</span>`;
+            return `<span class="${emitClass(scls, srule)}">${escapeHtml(seg.characters).replace(/\n/g, "<br>")}</span>`;
           })
           .join("");
       }
 
-      pushRule(cls, rule);
+      const c = emitClass(cls, rule);
       const tag = inList
         ? "li"
         : opts.semantic
@@ -188,9 +206,9 @@ async function generate(
         const link = node.hyperlink;
         const href =
           link && typeof link === "object" ? escapeHtml(link.value) : "#";
-        return `${indent}<a class="${cls}" href="${href}">${inner}</a>`;
+        return `${indent}<a class="${c}" href="${href}">${inner}</a>`;
       }
-      return `${indent}<${tag} class="${cls}">${inner}</${tag}>`;
+      return `${indent}<${tag} class="${c}">${inner}</${tag}>`;
     }
 
     // Containers and shapes.
@@ -219,6 +237,7 @@ async function generate(
       delete rule.overflow;
       rule.position = "relative";
       rule["z-index"] = "0";
+      hasBefore = true;
       cssRules.push(
         `.${cls}::before {\n` +
           `  content: "";\n` +
@@ -241,12 +260,11 @@ async function generate(
         : "div";
     const kids = "children" in node ? node.children.slice() : [];
     if (kids.length === 0) {
-      pushRule(cls, rule);
-      return `${indent}<${tag} class="${cls}"></${tag}>`;
+      return `${indent}<${tag} class="${emitClass(cls, rule, hasBefore)}"></${tag}>`;
     }
 
     if (!isAutoLayout(node) && !rule.position) rule.position = "relative";
-    pushRule(cls, rule);
+    const c = emitClass(cls, rule, hasBefore);
 
     const childInteractive = interactive || tag === "a" || tag === "button";
     const childHtml: string[] = [];
@@ -254,18 +272,34 @@ async function generate(
       const h = await build(child, node, depth + 1, tag, childInteractive);
       if (h) childHtml.push(h);
     }
-    return `${indent}<${tag} class="${cls}">\n${childHtml.join("\n")}\n${indent}</${tag}>`;
+    return `${indent}<${tag} class="${c}">\n${childHtml.join("\n")}\n${indent}</${tag}>`;
   }
 
   const body = await build(root, null, 3, "", false);
   const links = fontLink(fonts);
+  const bodyRule = `body { display: flex; justify-content: center;${pageBg ? ` background: ${pageBg};` : ""} }`;
+
+  // Tailwind mode: utilities live on the elements and the v4 browser CDN builds
+  // the stylesheet at runtime (its preflight covers the resets). The only static
+  // CSS left is the body centring and the full-bleed ::before rules, which have
+  // no clean utility form.
+  if (opts.tailwind) {
+    const extra = [bodyRule, ...cssRules].join("\n\n");
+    const head =
+      `  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>\n` +
+      `  <style>\n${extra.replace(/^/gm, "    ")}\n  </style>`;
+    const doc = docShell(root.name, links, head, body);
+    return { combined: doc, html: doc, css: "" };
+  }
+
   const stylesheet =
     "* { margin: 0; padding: 0; box-sizing: border-box; }\n" +
     // Strip user-agent chrome so a semantic <button>/<a> is painted only by the
     // node's own styles (no buttonface fill, no outset border, no link blue).
     "a { color: inherit; text-decoration: none; }\n" +
     "button { font: inherit; color: inherit; text-align: inherit; background: none; border: 0; cursor: pointer; -webkit-appearance: none; appearance: none; }\n" +
-    `body { display: flex; justify-content: center;${pageBg ? ` background: ${pageBg};` : ""} }\n\n` +
+    bodyRule +
+    "\n\n" +
     cssRules.join("\n\n");
 
   const styleBlock = `  <style>\n${stylesheet.replace(/^/gm, "    ")}\n  </style>`;
@@ -374,7 +408,11 @@ function textTag(
   // Only short text at a heading size becomes a heading; paragraphs stay <p>.
   if (typeof node.fontSize === "number") {
     const h = headings.get(Math.round(node.fontSize));
-    if (h && node.characters.length <= HEADING_MAX_CHARS && !node.characters.includes("\n")) {
+    if (
+      h &&
+      node.characters.length <= HEADING_MAX_CHARS &&
+      !node.characters.includes("\n")
+    ) {
       return h;
     }
   }
@@ -460,6 +498,12 @@ function positionAndSize(
   if (vSize === "FILL")
     rule[vParent ? "flex" : "align-self"] = vParent ? "1 1 0" : "stretch";
   else if (vSize === "FIXED" && h !== undefined) rule.height = `${h}px`;
+
+  // Figma auto-layout items keep their size; CSS flex items shrink to fit by
+  // default. Lock the main-axis size unless it's FILL, so a fixed-height (or
+  // fixed-width) parent can't squish content, e.g. an image band collapsing.
+  const mainSize = hParent ? hSize : vSize;
+  if (mainSize !== "FILL") rule["flex-shrink"] = 0;
 }
 
 function applyLayout(node: SceneNode, rule: Rule) {
@@ -621,8 +665,7 @@ function styleRule(
   if (src.textCase !== figma.mixed && tcase[src.textCase])
     rule["text-transform"] = tcase[src.textCase];
 
-  if (src.textDecoration === "UNDERLINE")
-    rule["text-decoration"] = "underline";
+  if (src.textDecoration === "UNDERLINE") rule["text-decoration"] = "underline";
   else if (src.textDecoration === "STRIKETHROUGH")
     rule["text-decoration"] = "line-through";
 }
@@ -703,7 +746,12 @@ function fontLink(fonts: Map<string, Set<number>>): string {
   );
 }
 
-function docShell(title: string, links: string, head: string, body: string): string {
+function docShell(
+  title: string,
+  links: string,
+  head: string,
+  body: string,
+): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -717,6 +765,105 @@ ${head}
 ${body}
 </body>
 </html>`;
+}
+
+// Convert a CSS rule object to Tailwind v4 utility classes. Idiomatic classes for
+// the common layout cases; arbitrary values (w-[320px], bg-[#1a1f26]) keep exact
+// pixel and colour fidelity; and an arbitrary property [prop:value] is the
+// universal fallback for the rest (gradients, shadows, per-side borders). Spaces
+// in a value become underscores, which Tailwind turns back into spaces.
+function toTailwind(rule: Rule): string {
+  return Object.keys(rule)
+    .map((k) => twUtil(k, String(rule[k])))
+    .filter(Boolean)
+    .join(" ");
+}
+
+function twUtil(k: string, v: string): string {
+  const a = v.replace(/\s+/g, "_"); // arbitrary-value form
+  const pick = (m: { [key: string]: string }, prop: string) =>
+    m[v] || `[${prop}:${a}]`;
+  switch (k) {
+    case "display":
+      return pick(
+        { flex: "flex", block: "block", "inline-block": "inline-block", none: "hidden", grid: "grid" },
+        k,
+      );
+    case "position":
+      return ["static", "relative", "absolute", "fixed", "sticky"].includes(v)
+        ? v
+        : `[${k}:${a}]`;
+    case "flex-direction":
+      return v === "column" ? "flex-col" : v === "row" ? "flex-row" : `[${k}:${a}]`;
+    case "justify-content":
+      return pick(
+        { "flex-start": "justify-start", center: "justify-center", "flex-end": "justify-end", "space-between": "justify-between", "space-around": "justify-around", "space-evenly": "justify-evenly" },
+        k,
+      );
+    case "align-items":
+      return pick(
+        { "flex-start": "items-start", center: "items-center", "flex-end": "items-end", baseline: "items-baseline", stretch: "items-stretch" },
+        k,
+      );
+    case "align-self":
+      return pick(
+        { stretch: "self-stretch", center: "self-center", "flex-start": "self-start", "flex-end": "self-end", auto: "self-auto", baseline: "self-baseline" },
+        k,
+      );
+    case "flex":
+      return v === "1 1 0" || v === "1" ? "flex-1" : `[flex:${a}]`;
+    case "flex-shrink":
+      return v === "0" ? "shrink-0" : `[flex-shrink:${a}]`;
+    case "overflow":
+      return pick(
+        { hidden: "overflow-hidden", auto: "overflow-auto", scroll: "overflow-scroll", visible: "overflow-visible" },
+        k,
+      );
+    case "text-align":
+      return pick({ left: "text-left", center: "text-center", right: "text-right", justify: "text-justify" }, k);
+    case "text-decoration":
+      return pick({ underline: "underline", "line-through": "line-through", none: "no-underline" }, k);
+    case "text-transform":
+      return pick({ uppercase: "uppercase", lowercase: "lowercase", capitalize: "capitalize", none: "normal-case" }, k);
+    case "object-fit":
+      return pick({ cover: "object-cover", contain: "object-contain", fill: "object-fill", none: "object-none" }, k);
+    case "width":
+      return v === "100%" ? "w-full" : v === "fit-content" ? "w-fit" : v === "auto" ? "w-auto" : `w-[${a}]`;
+    case "height":
+      return v === "100%" ? "h-full" : v === "fit-content" ? "h-fit" : v === "auto" ? "h-auto" : `h-[${a}]`;
+    case "gap":
+      return `gap-[${a}]`;
+    case "padding":
+      return `p-[${a}]`;
+    case "margin":
+      return v === "0 auto" ? "mx-auto" : `m-[${a}]`;
+    case "left":
+    case "top":
+    case "right":
+    case "bottom":
+      return `${k}-[${a}]`;
+    case "opacity":
+      return `opacity-[${v}]`;
+    case "z-index":
+      return `z-[${v}]`;
+    case "border-radius":
+      return `rounded-[${a}]`;
+    case "background":
+      return v.startsWith("#") ? `bg-[${v}]` : `[background:${a}]`;
+    case "color":
+      return `text-[${v}]`;
+    case "font-size":
+      return `text-[${a}]`;
+    case "line-height":
+      return `leading-[${a}]`;
+    case "letter-spacing":
+      return `tracking-[${a}]`;
+    case "box-shadow":
+      return `shadow-[${a}]`;
+    default:
+      // font-weight, font-family, border, per-side borders, and anything else.
+      return `[${k}:${a}]`;
+  }
 }
 
 function escapeHtml(s: string): string {
