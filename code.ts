@@ -190,7 +190,7 @@ async function generate(
     const tag = inList
       ? "li"
       : opts.semantic
-        ? containerTag(node, topBand, interactive)
+        ? containerTag(node, topBand)
         : "div";
     const kids = "children" in node ? node.children.slice() : [];
     if (kids.length === 0) {
@@ -324,17 +324,13 @@ const BAND_TAGS: [RegExp, string][] = [
 ];
 const BUTTON_NAME = /\b(button|btn|cta)\b/;
 
-function containerTag(
-  node: SceneNode,
-  topBand: boolean,
-  interactive: boolean,
-): string {
+function containerTag(node: SceneNode, topBand: boolean): string {
   const name = (node.name || "").toLowerCase();
   for (const [re, tag] of INLINE_TAGS) if (re.test(name)) return tag;
   if (topBand) for (const [re, tag] of BAND_TAGS) if (re.test(name)) return tag;
-  // A button, only from its name, never nested inside another interactive
-  // element, and never when it actually wraps buttons (e.g. a "button row").
-  if (!interactive && BUTTON_NAME.test(name) && !wrapsButton(node)) return "button";
+  // A button, only from its name, and never when it actually wraps buttons
+  // (e.g. a "button row"), which would nest a button inside a button.
+  if (BUTTON_NAME.test(name) && !wrapsButton(node)) return "button";
   return "div";
 }
 
