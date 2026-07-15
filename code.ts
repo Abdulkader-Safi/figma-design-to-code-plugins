@@ -9,17 +9,33 @@ figma.ui.onmessage = async (msg: { type: string }) => {
   if (msg.type !== "export") return;
 
   const sel = figma.currentPage.selection;
-  const root = sel.find((n) => n.type === "FRAME" || n.type === "COMPONENT" || n.type === "INSTANCE" || n.type === "GROUP");
+  const root = sel.find(
+    (n) =>
+      n.type === "FRAME" ||
+      n.type === "COMPONENT" ||
+      n.type === "INSTANCE" ||
+      n.type === "GROUP",
+  );
   if (!root) {
-    figma.ui.postMessage({ type: "error", message: "Select a frame, component, or group to export." });
+    figma.ui.postMessage({
+      type: "error",
+      message: "Select a frame, component, or group to export.",
+    });
     return;
   }
 
   try {
     const code = await generate(root);
-    figma.ui.postMessage({ type: "result", code, name: sanitizeFileName(root.name) });
+    figma.ui.postMessage({
+      type: "result",
+      code,
+      name: sanitizeFileName(root.name),
+    });
   } catch (e) {
-    figma.ui.postMessage({ type: "error", message: "Export failed: " + (e as Error).message });
+    figma.ui.postMessage({
+      type: "error",
+      message: "Export failed: " + (e as Error).message,
+    });
   }
 };
 
@@ -54,7 +70,11 @@ async function generate(root: SceneNode): Promise<string> {
     fonts.get(family)!.add(weight);
   };
 
-  async function build(node: SceneNode, parent: SceneNode | null, depth: number): Promise<string> {
+  async function build(
+    node: SceneNode,
+    parent: SceneNode | null,
+    depth: number,
+  ): Promise<string> {
     if ("visible" in node && node.visible === false) return "";
 
     const cls = className(node);
@@ -63,7 +83,11 @@ async function generate(root: SceneNode): Promise<string> {
     const absolute = parent !== null && !isAutoLayout(parent);
 
     positionAndSize(node, parent, absolute, rule);
-    if ("opacity" in node && typeof node.opacity === "number" && node.opacity < 1) {
+    if (
+      "opacity" in node &&
+      typeof node.opacity === "number" &&
+      node.opacity < 1
+    ) {
       rule.opacity = round(node.opacity);
     }
 
@@ -83,7 +107,10 @@ async function generate(root: SceneNode): Promise<string> {
     if (hasImageFill(node)) {
       applyBoxDecoration(node, rule);
       try {
-        const bytes = await node.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 2 } });
+        const bytes = await node.exportAsync({
+          format: "PNG",
+          constraint: { type: "SCALE", value: 2 },
+        });
         const b64 = figma.base64Encode(bytes);
         rule["object-fit"] = "cover";
         pushRule(cls, rule);
@@ -130,15 +157,27 @@ async function generate(root: SceneNode): Promise<string> {
 
 // --- node helpers ------------------------------------------------------------
 
-const isAutoLayout = (n: SceneNode): boolean => "layoutMode" in n && n.layoutMode !== "NONE";
+const isAutoLayout = (n: SceneNode): boolean =>
+  "layoutMode" in n && n.layoutMode !== "NONE";
 
 const isVectorLike = (n: SceneNode): boolean =>
-  n.type === "VECTOR" || n.type === "BOOLEAN_OPERATION" || n.type === "STAR" || n.type === "LINE" || n.type === "POLYGON";
+  n.type === "VECTOR" ||
+  n.type === "BOOLEAN_OPERATION" ||
+  n.type === "STAR" ||
+  n.type === "LINE" ||
+  n.type === "POLYGON";
 
 const hasImageFill = (n: SceneNode): boolean =>
-  "fills" in n && Array.isArray(n.fills) && n.fills.some((f) => f.visible !== false && f.type === "IMAGE");
+  "fills" in n &&
+  Array.isArray(n.fills) &&
+  n.fills.some((f) => f.visible !== false && f.type === "IMAGE");
 
-function positionAndSize(node: SceneNode, parent: SceneNode | null, absolute: boolean, rule: Rule) {
+function positionAndSize(
+  node: SceneNode,
+  parent: SceneNode | null,
+  absolute: boolean,
+  rule: Rule,
+) {
   const w = "width" in node ? Math.round(node.width) : undefined;
   const h = "height" in node ? Math.round(node.height) : undefined;
 
@@ -162,13 +201,19 @@ function positionAndSize(node: SceneNode, parent: SceneNode | null, absolute: bo
   // In an auto-layout parent: honour Figma's hug / fill / fixed sizing.
   const hParent = "layoutMode" in parent && parent.layoutMode === "HORIZONTAL";
   const vParent = "layoutMode" in parent && parent.layoutMode === "VERTICAL";
-  const hSize = ("layoutSizingHorizontal" in node ? node.layoutSizingHorizontal : "FIXED") as string;
-  const vSize = ("layoutSizingVertical" in node ? node.layoutSizingVertical : "FIXED") as string;
+  const hSize = (
+    "layoutSizingHorizontal" in node ? node.layoutSizingHorizontal : "FIXED"
+  ) as string;
+  const vSize = (
+    "layoutSizingVertical" in node ? node.layoutSizingVertical : "FIXED"
+  ) as string;
 
-  if (hSize === "FILL") rule[hParent ? "flex" : "align-self"] = hParent ? "1 1 0" : "stretch";
+  if (hSize === "FILL")
+    rule[hParent ? "flex" : "align-self"] = hParent ? "1 1 0" : "stretch";
   else if (hSize === "FIXED" && w !== undefined) rule.width = `${w}px`;
 
-  if (vSize === "FILL") rule[vParent ? "flex" : "align-self"] = vParent ? "1 1 0" : "stretch";
+  if (vSize === "FILL")
+    rule[vParent ? "flex" : "align-self"] = vParent ? "1 1 0" : "stretch";
   else if (vSize === "FIXED" && h !== undefined) rule.height = `${h}px`;
 }
 
@@ -179,14 +224,26 @@ function applyLayout(node: SceneNode, rule: Rule) {
   rule["flex-direction"] = n.layoutMode === "VERTICAL" ? "column" : "row";
 
   const pad = [n.paddingTop, n.paddingRight, n.paddingBottom, n.paddingLeft];
-  if (pad.some((p) => p > 0)) rule.padding = pad.map((p) => `${Math.round(p)}px`).join(" ");
+  if (pad.some((p) => p > 0))
+    rule.padding = pad.map((p) => `${Math.round(p)}px`).join(" ");
 
-  const primary: { [k: string]: string } = { MIN: "flex-start", CENTER: "center", MAX: "flex-end", SPACE_BETWEEN: "space-between" };
-  const counter: { [k: string]: string } = { MIN: "flex-start", CENTER: "center", MAX: "flex-end", BASELINE: "baseline" };
+  const primary: { [k: string]: string } = {
+    MIN: "flex-start",
+    CENTER: "center",
+    MAX: "flex-end",
+    SPACE_BETWEEN: "space-between",
+  };
+  const counter: { [k: string]: string } = {
+    MIN: "flex-start",
+    CENTER: "center",
+    MAX: "flex-end",
+    BASELINE: "baseline",
+  };
   rule["justify-content"] = primary[n.primaryAxisAlignItems] || "flex-start";
   rule["align-items"] = counter[n.counterAxisAlignItems] || "flex-start";
 
-  if (n.primaryAxisAlignItems !== "SPACE_BETWEEN" && n.itemSpacing > 0) rule.gap = `${Math.round(n.itemSpacing)}px`;
+  if (n.primaryAxisAlignItems !== "SPACE_BETWEEN" && n.itemSpacing > 0)
+    rule.gap = `${Math.round(n.itemSpacing)}px`;
   if (n.clipsContent) rule.overflow = "hidden";
 }
 
@@ -202,16 +259,20 @@ function applyBoxDecoration(node: SceneNode, rule: Rule) {
     rule["border-radius"] = "50%";
   } else if ("cornerRadius" in node) {
     const cr = node.cornerRadius;
-    if (typeof cr === "number" && cr > 0) rule["border-radius"] = `${Math.round(cr)}px`;
+    if (typeof cr === "number" && cr > 0)
+      rule["border-radius"] = `${Math.round(cr)}px`;
     else if (cr === figma.mixed && "topLeftRadius" in node) {
       const c = node as RectangleNode;
-      rule["border-radius"] = `${c.topLeftRadius}px ${c.topRightRadius}px ${c.bottomRightRadius}px ${c.bottomLeftRadius}px`;
+      rule["border-radius"] =
+        `${c.topLeftRadius}px ${c.topRightRadius}px ${c.bottomRightRadius}px ${c.bottomLeftRadius}px`;
     }
   }
 
   // Border.
   if ("strokes" in node && Array.isArray(node.strokes)) {
-    const s = node.strokes.find((x) => x.visible !== false && x.type === "SOLID") as SolidPaint | undefined;
+    const s = node.strokes.find(
+      (x) => x.visible !== false && x.type === "SOLID",
+    ) as SolidPaint | undefined;
     if (s) {
       const w = typeof node.strokeWeight === "number" ? node.strokeWeight : 1;
       rule.border = `${Math.round(w)}px solid ${rgba(s.color, s.opacity)}`;
@@ -221,7 +282,11 @@ function applyBoxDecoration(node: SceneNode, rule: Rule) {
   // Shadows.
   if ("effects" in node && Array.isArray(node.effects)) {
     const shadows = node.effects
-      .filter((e) => e.visible !== false && (e.type === "DROP_SHADOW" || e.type === "INNER_SHADOW"))
+      .filter(
+        (e) =>
+          e.visible !== false &&
+          (e.type === "DROP_SHADOW" || e.type === "INNER_SHADOW"),
+      )
       .map((e) => {
         const inset = e.type === "INNER_SHADOW" ? "inset " : "";
         const s = e as DropShadowEffect;
@@ -231,54 +296,87 @@ function applyBoxDecoration(node: SceneNode, rule: Rule) {
   }
 }
 
-function applyTextStyle(node: TextNode, rule: Rule, addFont: (family: string, weight: number) => void) {
+function applyTextStyle(
+  node: TextNode,
+  rule: Rule,
+  addFont: (family: string, weight: number) => void,
+) {
   const fn = node.fontName;
   if (fn !== figma.mixed) {
     const weight = styleToWeight(fn.style);
     rule["font-family"] = `'${fn.family}', sans-serif`;
     rule["font-weight"] = weight;
-    if (fn.style.toLowerCase().includes("italic")) rule["font-style"] = "italic";
+    if (fn.style.toLowerCase().includes("italic"))
+      rule["font-style"] = "italic";
     addFont(fn.family, weight);
   }
 
-  if (node.fontSize !== figma.mixed) rule["font-size"] = `${Math.round(node.fontSize)}px`;
+  if (node.fontSize !== figma.mixed)
+    rule["font-size"] = `${Math.round(node.fontSize)}px`;
 
   const color = "fills" in node ? solidFill(node.fills) : null;
   if (color) rule.color = color;
 
-  const align: { [k: string]: string } = { LEFT: "left", CENTER: "center", RIGHT: "right", JUSTIFIED: "justify" };
+  const align: { [k: string]: string } = {
+    LEFT: "left",
+    CENTER: "center",
+    RIGHT: "right",
+    JUSTIFIED: "justify",
+  };
   rule["text-align"] = align[node.textAlignHorizontal] || "left";
 
   const lh = node.lineHeight;
   if (lh !== figma.mixed && lh.unit !== "AUTO") {
-    rule["line-height"] = lh.unit === "PIXELS" ? `${Math.round(lh.value)}px` : `${round(lh.value / 100)}`;
+    rule["line-height"] =
+      lh.unit === "PIXELS"
+        ? `${Math.round(lh.value)}px`
+        : `${round(lh.value / 100)}`;
   }
 
   const ls = node.letterSpacing;
   if (ls !== figma.mixed && ls.value !== 0) {
-    rule["letter-spacing"] = ls.unit === "PERCENT" ? `${round(ls.value / 100)}em` : `${round(ls.value)}px`;
+    rule["letter-spacing"] =
+      ls.unit === "PERCENT"
+        ? `${round(ls.value / 100)}em`
+        : `${round(ls.value)}px`;
   }
 
-  const tcase: { [k: string]: string } = { UPPER: "uppercase", LOWER: "lowercase", TITLE: "capitalize" };
-  if (node.textCase !== figma.mixed && tcase[node.textCase]) rule["text-transform"] = tcase[node.textCase];
+  const tcase: { [k: string]: string } = {
+    UPPER: "uppercase",
+    LOWER: "lowercase",
+    TITLE: "capitalize",
+  };
+  if (node.textCase !== figma.mixed && tcase[node.textCase])
+    rule["text-transform"] = tcase[node.textCase];
 
-  if (node.textDecoration === "UNDERLINE") rule["text-decoration"] = "underline";
-  else if (node.textDecoration === "STRIKETHROUGH") rule["text-decoration"] = "line-through";
+  if (node.textDecoration === "UNDERLINE")
+    rule["text-decoration"] = "underline";
+  else if (node.textDecoration === "STRIKETHROUGH")
+    rule["text-decoration"] = "line-through";
 }
 
 // --- value converters --------------------------------------------------------
 
-function solidFill(fills: readonly Paint[] | typeof figma.mixed): string | null {
+function solidFill(
+  fills: readonly Paint[] | typeof figma.mixed,
+): string | null {
   if (!Array.isArray(fills)) return null;
-  const f = fills.find((x) => x.visible !== false && x.type === "SOLID") as SolidPaint | undefined;
+  const f = fills.find((x) => x.visible !== false && x.type === "SOLID") as
+    SolidPaint | undefined;
   return f ? rgba(f.color, f.opacity) : null;
 }
 
-function linearGradient(fills: readonly Paint[] | typeof figma.mixed): string | null {
+function linearGradient(
+  fills: readonly Paint[] | typeof figma.mixed,
+): string | null {
   if (!Array.isArray(fills)) return null;
-  const g = fills.find((x) => x.visible !== false && x.type === "GRADIENT_LINEAR") as GradientPaint | undefined;
+  const g = fills.find(
+    (x) => x.visible !== false && x.type === "GRADIENT_LINEAR",
+  ) as GradientPaint | undefined;
   if (!g) return null;
-  const stops = g.gradientStops.map((s) => `${rgba(s.color, s.color.a)} ${Math.round(s.position * 100)}%`).join(", ");
+  const stops = g.gradientStops
+    .map((s) => `${rgba(s.color, s.color.a)} ${Math.round(s.position * 100)}%`)
+    .join(", ");
   return `linear-gradient(180deg, ${stops})`; // ponytail: fixed 180deg; read gradientTransform for exact angle if needed
 }
 
@@ -312,7 +410,12 @@ function styleToWeight(style: string): number {
 function fontLink(fonts: Map<string, Set<number>>): string {
   if (fonts.size === 0) return "";
   const families = Array.from(fonts.entries())
-    .map(([fam, weights]) => `family=${fam.replace(/ /g, "+")}:wght@${Array.from(weights).sort((a, b) => a - b).join(";")}`)
+    .map(
+      ([fam, weights]) =>
+        `family=${fam.replace(/ /g, "+")}:wght@${Array.from(weights)
+          .sort((a, b) => a - b)
+          .join(";")}`,
+    )
     .join("&");
   return (
     `<link rel="preconnect" href="https://fonts.googleapis.com">\n` +
@@ -321,7 +424,12 @@ function fontLink(fonts: Map<string, Set<number>>): string {
   );
 }
 
-function assembleDoc(title: string, links: string, css: string, body: string): string {
+function assembleDoc(
+  title: string,
+  links: string,
+  css: string,
+  body: string,
+): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -347,7 +455,12 @@ function escapeHtml(s: string): string {
 }
 
 function sanitizeFileName(name: string): string {
-  return (name || "export").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "export";
+  return (
+    (name || "export")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "export"
+  );
 }
 
 const round = (n: number): number => Math.round(n * 100) / 100;
