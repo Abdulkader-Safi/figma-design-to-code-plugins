@@ -3,7 +3,7 @@
 // pulls colors, typography, radius, borders, shadows. Fonts used by text nodes are
 // emitted as a Google Fonts <link> (non-Google families just fall back gracefully).
 
-figma.showUI(__html__, { width: 480, height: 660, themeColors: true });
+figma.showUI(__html__, { width: 600, height: 780, themeColors: true });
 
 figma.ui.onmessage = async (msg: {
   type: string;
