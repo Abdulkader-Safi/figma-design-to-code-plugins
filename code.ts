@@ -53,6 +53,14 @@ async function generate(
   const fonts = new Map<string, Set<number>>(); // family -> weights
   let counter = 0;
 
+  // The page width and background drive full-width sections: the surround gets
+  // the page colour (no white gutters) and full-span bands bleed to both edges.
+  const pageW = "width" in root ? Math.round(root.width) : 0;
+  const pageBg =
+    "fills" in root && Array.isArray(root.fills)
+      ? solidFill(root.fills) || linearGradient(root.fills)
+      : null;
+
   // Map heading font sizes -> h1..h6. The most common size is treated as body;
   // anything larger becomes a heading, ranked by size. Works with no layer names.
   const headings = opts.semantic ? headingMap(root) : new Map<number, string>();
@@ -106,8 +114,10 @@ async function generate(
       rule.opacity = round(node.opacity);
     }
 
-    // Vectors and icons: inline the SVG, crisp and small.
-    if (isVectorLike(node)) {
+    // Vectors and icons: inline the SVG, crisp and small. A container made only
+    // of vector art (icon strokes, a glyph on a shape) is exported whole as one
+    // SVG so multi-part icons render as designed instead of as broken pieces.
+    if (isVectorLike(node) || isIconContainer(node)) {
       let svg = "";
       try {
         svg = await node.exportAsync({ format: "SVG_STRING" });
@@ -187,6 +197,37 @@ async function generate(
     applyBoxDecoration(node, rule);
     applyLayout(node, rule);
 
+    // A top-level section that spans the page paints its background across the
+    // full viewport (content stays in the centred column) so it reaches both
+    // screen edges instead of leaving white gutters. Skipped for bands that
+    // clip, are bordered, or don't span the width (e.g. left-aligned blocks).
+    if (
+      topBand &&
+      rule.background &&
+      !rule.overflow &&
+      "width" in node &&
+      node.width >= pageW * 0.98 &&
+      !Object.keys(rule).some((k) => k.startsWith("border"))
+    ) {
+      const bg = rule.background;
+      delete rule.background;
+      rule.position = "relative";
+      rule["z-index"] = "0";
+      cssRules.push(
+        `.${cls}::before {\n` +
+          `  content: "";\n` +
+          `  position: absolute;\n` +
+          `  z-index: -1;\n` +
+          `  top: 0;\n` +
+          `  bottom: 0;\n` +
+          `  left: 50%;\n` +
+          `  width: 100vw;\n` +
+          `  margin-left: -50vw;\n` +
+          `  background: ${bg};\n` +
+          `}`,
+      );
+    }
+
     const tag = inList
       ? "li"
       : opts.semantic
@@ -218,7 +259,7 @@ async function generate(
     // node's own styles (no buttonface fill, no outset border, no link blue).
     "a { color: inherit; text-decoration: none; }\n" +
     "button { font: inherit; color: inherit; text-align: inherit; background: none; border: 0; cursor: pointer; -webkit-appearance: none; appearance: none; }\n" +
-    "body { display: flex; justify-content: center; }\n\n" +
+    `body { display: flex; justify-content: center;${pageBg ? ` background: ${pageBg};` : ""} }\n\n` +
     cssRules.join("\n\n");
 
   const styleBlock = `  <style>\n${stylesheet.replace(/^/gm, "    ")}\n  </style>`;
@@ -247,6 +288,29 @@ const hasImageFill = (n: SceneNode): boolean =>
   "fills" in n &&
   Array.isArray(n.fills) &&
   n.fills.some((f) => f.visible !== false && f.type === "IMAGE");
+
+// A container is an icon/illustration when its whole subtree is vector art:
+// at least one real vector, and no text or image anywhere. Such nodes export
+// cleanly as a single SVG; anything with text (a card, a button) does not.
+function isIconContainer(node: SceneNode): boolean {
+  if (!("children" in node) || node.children.length === 0) return false;
+  // Icons are small; cap the size so real sections or large vector art aren't
+  // flattened into one SVG. ponytail: raise the cap if big vector logos need it.
+  if ("width" in node && (node.width > 128 || node.height > 128)) return false;
+  let hasVector = false;
+  let ok = true;
+  const walk = (n: SceneNode) => {
+    if (!ok) return;
+    if (n.type === "TEXT" || hasImageFill(n)) {
+      ok = false;
+      return;
+    }
+    if (isVectorLike(n)) hasVector = true;
+    if ("children" in n) n.children.forEach(walk);
+  };
+  node.children.forEach(walk);
+  return ok && hasVector;
+}
 
 // --- semantic tag resolution -------------------------------------------------
 // All heuristics are offline and deliberately conservative: a node only leaves
@@ -419,10 +483,13 @@ function applyLayout(node: SceneNode, rule: Rule) {
 
   if (n.primaryAxisAlignItems !== "SPACE_BETWEEN" && n.itemSpacing > 0)
     rule.gap = `${Math.round(n.itemSpacing)}px`;
-  if (n.clipsContent) rule.overflow = "hidden";
 }
 
 function applyBoxDecoration(node: SceneNode, rule: Rule) {
+  // Clip children to rounded corners for any frame Figma clips, auto-layout or
+  // not, so a bottom child can't poke square corners past a rounded parent.
+  if ("clipsContent" in node && node.clipsContent) rule.overflow = "hidden";
+
   // Background.
   if ("fills" in node && Array.isArray(node.fills)) {
     const bg = solidFill(node.fills) || linearGradient(node.fills);
