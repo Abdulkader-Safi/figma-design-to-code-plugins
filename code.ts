@@ -498,6 +498,12 @@ function positionAndSize(
   if (vSize === "FILL")
     rule[vParent ? "flex" : "align-self"] = vParent ? "1 1 0" : "stretch";
   else if (vSize === "FIXED" && h !== undefined) rule.height = `${h}px`;
+
+  // Figma auto-layout items keep their size; CSS flex items shrink to fit by
+  // default. Lock the main-axis size unless it's FILL, so a fixed-height (or
+  // fixed-width) parent can't squish content, e.g. an image band collapsing.
+  const mainSize = hParent ? hSize : vSize;
+  if (mainSize !== "FILL") rule["flex-shrink"] = 0;
 }
 
 function applyLayout(node: SceneNode, rule: Rule) {
@@ -806,6 +812,8 @@ function twUtil(k: string, v: string): string {
       );
     case "flex":
       return v === "1 1 0" || v === "1" ? "flex-1" : `[flex:${a}]`;
+    case "flex-shrink":
+      return v === "0" ? "shrink-0" : `[flex-shrink:${a}]`;
     case "overflow":
       return pick(
         { hidden: "overflow-hidden", auto: "overflow-auto", scroll: "overflow-scroll", visible: "overflow-visible" },
