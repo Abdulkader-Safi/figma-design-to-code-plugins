@@ -214,6 +214,10 @@ async function generate(
   const links = fontLink(fonts);
   const stylesheet =
     "* { margin: 0; padding: 0; box-sizing: border-box; }\n" +
+    // Strip user-agent chrome so a semantic <button>/<a> is painted only by the
+    // node's own styles (no buttonface fill, no outset border, no link blue).
+    "a { color: inherit; text-decoration: none; }\n" +
+    "button { font: inherit; color: inherit; text-align: inherit; background: none; border: 0; cursor: pointer; -webkit-appearance: none; appearance: none; }\n" +
     "body { display: flex; justify-content: center; }\n\n" +
     cssRules.join("\n\n");
 
