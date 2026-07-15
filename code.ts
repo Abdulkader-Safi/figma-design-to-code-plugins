@@ -288,8 +288,26 @@ function applyBoxDecoration(node: SceneNode, rule: Rule) {
       (x) => x.visible !== false && x.type === "SOLID",
     ) as SolidPaint | undefined;
     if (s) {
-      const w = typeof node.strokeWeight === "number" ? node.strokeWeight : 1;
-      rule.border = `${Math.round(w)}px solid ${rgba(s.color, s.opacity)}`;
+      const color = rgba(s.color, s.opacity);
+      if ("strokeTopWeight" in node) {
+        // Figma allows per-side stroke weights; honour each side so a bottom-only
+        // rule doesn't become a full box.
+        const t = Math.round(node.strokeTopWeight);
+        const r = Math.round(node.strokeRightWeight);
+        const b = Math.round(node.strokeBottomWeight);
+        const l = Math.round(node.strokeLeftWeight);
+        if (t === r && r === b && b === l) {
+          if (t > 0) rule.border = `${t}px solid ${color}`;
+        } else {
+          if (t > 0) rule["border-top"] = `${t}px solid ${color}`;
+          if (r > 0) rule["border-right"] = `${r}px solid ${color}`;
+          if (b > 0) rule["border-bottom"] = `${b}px solid ${color}`;
+          if (l > 0) rule["border-left"] = `${l}px solid ${color}`;
+        }
+      } else {
+        const w = typeof node.strokeWeight === "number" ? node.strokeWeight : 1;
+        if (w > 0) rule.border = `${w}px solid ${color}`;
+      }
     }
   }
 
