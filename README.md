@@ -1,40 +1,31 @@
-Below are the steps to get your plugin running. You can also find instructions at:
+# Design to HTML
 
-  https://www.figma.com/plugin-docs/plugin-quickstart-guide/
+A Figma plugin that exports a selected frame to a single self-contained HTML file, keeping the layout, colors, typography, and Google fonts.
 
-This plugin template uses Typescript and NPM, two standard tools in creating JavaScript applications.
+## What it does
 
-First, download Node.js which comes with NPM. This will allow you to install TypeScript and other
-libraries. You can find the download link here:
+- Auto-layout frames become flexbox (direction, gap, padding, alignment, hug/fill sizing).
+- Static frames and groups become absolutely positioned children.
+- Pulls solid and linear-gradient fills, corner radius, borders, and drop/inner shadows.
+- Text nodes keep their content, font family, weight, size, color, alignment, line height, letter spacing, and case.
+- Vectors and icons are inlined as SVG. Image fills export as PNG data URIs.
+- Fonts used by text are emitted as a Google Fonts `<link>`. Non-Google families fall back gracefully.
 
-  https://nodejs.org/en/download/
+## Using it
 
-Next, install TypeScript using the command:
+1. Select a frame, component, instance, or group.
+2. Run the plugin and click **Export selected frame**.
+3. Copy the code or download the `.html` file.
 
-  npm install -g typescript
+## Development
 
-Finally, in the directory of your plugin, get the latest type definitions for the plugin API by running:
+```
+npm install        # first time
+npm run build       # compile code.ts -> code.js
+npm run watch       # rebuild on save
+npm run lint        # eslint
+```
 
-  npm install --save-dev @figma/plugin-typings
+Load the plugin in Figma via **Plugins > Development > Import plugin from manifest** and pick `manifest.json`.
 
-If you are familiar with JavaScript, TypeScript will look very familiar. In fact, valid JavaScript code
-is already valid Typescript code.
-
-TypeScript adds type annotations to variables. This allows code editors such as Visual Studio Code
-to provide information about the Figma API while you are writing code, as well as help catch bugs
-you previously didn't notice.
-
-For more information, visit https://www.typescriptlang.org/
-
-Using TypeScript requires a compiler to convert TypeScript (code.ts) into JavaScript (code.js)
-for the browser to run.
-
-We recommend writing TypeScript code using Visual Studio code:
-
-1. Download Visual Studio Code if you haven't already: https://code.visualstudio.com/.
-2. Open this directory in Visual Studio Code.
-3. Compile TypeScript to JavaScript: Run the "Terminal > Run Build Task..." menu item,
-    then select "npm: watch". You will have to do this again every time
-    you reopen Visual Studio Code.
-
-That's it! Visual Studio Code will regenerate the JavaScript file every time you save.
+`code.ts` runs in the Figma sandbox (has the `figma` API). `ui.html` is the panel iframe. They talk over `postMessage`.
