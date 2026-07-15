@@ -53,6 +53,14 @@ async function generate(
   const fonts = new Map<string, Set<number>>(); // family -> weights
   let counter = 0;
 
+  // The page width and background drive full-width sections: the surround gets
+  // the page colour (no white gutters) and full-span bands bleed to both edges.
+  const pageW = "width" in root ? Math.round(root.width) : 0;
+  const pageBg =
+    "fills" in root && Array.isArray(root.fills)
+      ? solidFill(root.fills) || linearGradient(root.fills)
+      : null;
+
   // Map heading font sizes -> h1..h6. The most common size is treated as body;
   // anything larger becomes a heading, ranked by size. Works with no layer names.
   const headings = opts.semantic ? headingMap(root) : new Map<number, string>();
@@ -84,6 +92,7 @@ async function generate(
     parent: SceneNode | null,
     depth: number,
     parentTag: string,
+    interactive: boolean,
   ): Promise<string> {
     if ("visible" in node && node.visible === false) return "";
 
@@ -93,6 +102,8 @@ async function generate(
     const absolute = parent !== null && !isAutoLayout(parent);
     // Direct children of a list become list items.
     const inList = parentTag === "ul" || parentTag === "ol";
+    // Landmark bands (section/header/footer/main) only apply at the top level.
+    const topBand = parent === root;
 
     positionAndSize(node, parent, absolute, rule);
     if (
@@ -103,8 +114,10 @@ async function generate(
       rule.opacity = round(node.opacity);
     }
 
-    // Vectors and icons: inline the SVG, crisp and small.
-    if (isVectorLike(node)) {
+    // Vectors and icons: inline the SVG, crisp and small. A container made only
+    // of vector art (icon strokes, a glyph on a shape) is exported whole as one
+    // SVG so multi-part icons render as designed instead of as broken pieces.
+    if (isVectorLike(node) || isIconContainer(node)) {
       let svg = "";
       try {
         svg = await node.exportAsync({ format: "SVG_STRING" });
@@ -135,24 +148,97 @@ async function generate(
 
     // Text.
     if (node.type === "TEXT") {
-      applyTextStyle(node, rule, addFont);
+      // Node-level alignment always; font/size/color per segment below.
+      rule["text-align"] = ALIGN[node.textAlignHorizontal] || "left";
+
+      const segments = node.getStyledTextSegments([
+        "fontName",
+        "fontSize",
+        "fills",
+        "textDecoration",
+        "textCase",
+        "letterSpacing",
+        "lineHeight",
+      ]);
+
+      let inner: string;
+      if (segments.length <= 1) {
+        styleRule(node, rule, addFont); // uniform text
+        inner = escapeHtml(node.characters).replace(/\n/g, "<br>");
+      } else {
+        // Mixed styling in one text node: one <span> per run.
+        inner = segments
+          .map((seg, i) => {
+            const scls = `${cls}-r${i}`;
+            const srule: Rule = {};
+            styleRule(seg, srule, addFont);
+            pushRule(scls, srule);
+            return `<span class="${scls}">${escapeHtml(seg.characters).replace(/\n/g, "<br>")}</span>`;
+          })
+          .join("");
+      }
+
       pushRule(cls, rule);
-      const text = escapeHtml(node.characters).replace(/\n/g, "<br>");
-      const tag = inList ? "li" : opts.semantic ? textTag(node, headings) : "p";
+      const tag = inList
+        ? "li"
+        : opts.semantic
+          ? textTag(node, headings, interactive)
+          : "p";
       if (tag === "a") {
         const link = node.hyperlink;
         const href =
           link && typeof link === "object" ? escapeHtml(link.value) : "#";
-        return `${indent}<a class="${cls}" href="${href}">${text}</a>`;
+        return `${indent}<a class="${cls}" href="${href}">${inner}</a>`;
       }
-      return `${indent}<${tag} class="${cls}">${text}</${tag}>`;
+      return `${indent}<${tag} class="${cls}">${inner}</${tag}>`;
     }
 
     // Containers and shapes.
     applyBoxDecoration(node, rule);
     applyLayout(node, rule);
 
-    const tag = inList ? "li" : opts.semantic ? containerTag(node) : "div";
+    // The page root must not clip: a fixed-width overflow:hidden root would trap
+    // every full-width section inside the design column and cancel the bleed.
+    if (parent === null) delete rule.overflow;
+
+    // Any section that spans the page paints its background across the full
+    // viewport (content stays in the centred column) so it reaches both screen
+    // edges instead of leaving gutters. Works at any nesting depth, since the
+    // design is centred, so a full-width band is always centred in the viewport.
+    // Skipped for the root, and for bordered bands or narrower left-aligned
+    // blocks. A qualifying band drops its own clip so the bleed can escape it.
+    if (
+      parent !== null &&
+      rule.background &&
+      "width" in node &&
+      node.width >= pageW * 0.98 &&
+      !Object.keys(rule).some((k) => k.startsWith("border"))
+    ) {
+      const bg = rule.background;
+      delete rule.background;
+      delete rule.overflow;
+      rule.position = "relative";
+      rule["z-index"] = "0";
+      cssRules.push(
+        `.${cls}::before {\n` +
+          `  content: "";\n` +
+          `  position: absolute;\n` +
+          `  z-index: -1;\n` +
+          `  top: 0;\n` +
+          `  bottom: 0;\n` +
+          `  left: 50%;\n` +
+          `  width: 100vw;\n` +
+          `  margin-left: -50vw;\n` +
+          `  background: ${bg};\n` +
+          `}`,
+      );
+    }
+
+    const tag = inList
+      ? "li"
+      : opts.semantic
+        ? containerTag(node, topBand)
+        : "div";
     const kids = "children" in node ? node.children.slice() : [];
     if (kids.length === 0) {
       pushRule(cls, rule);
@@ -162,19 +248,24 @@ async function generate(
     if (!isAutoLayout(node) && !rule.position) rule.position = "relative";
     pushRule(cls, rule);
 
+    const childInteractive = interactive || tag === "a" || tag === "button";
     const childHtml: string[] = [];
     for (const child of kids) {
-      const h = await build(child, node, depth + 1, tag);
+      const h = await build(child, node, depth + 1, tag, childInteractive);
       if (h) childHtml.push(h);
     }
     return `${indent}<${tag} class="${cls}">\n${childHtml.join("\n")}\n${indent}</${tag}>`;
   }
 
-  const body = await build(root, null, 3, "");
+  const body = await build(root, null, 3, "", false);
   const links = fontLink(fonts);
   const stylesheet =
     "* { margin: 0; padding: 0; box-sizing: border-box; }\n" +
-    "body { display: flex; justify-content: center; }\n\n" +
+    // Strip user-agent chrome so a semantic <button>/<a> is painted only by the
+    // node's own styles (no buttonface fill, no outset border, no link blue).
+    "a { color: inherit; text-decoration: none; }\n" +
+    "button { font: inherit; color: inherit; text-align: inherit; background: none; border: 0; cursor: pointer; -webkit-appearance: none; appearance: none; }\n" +
+    `body { display: flex; justify-content: center;${pageBg ? ` background: ${pageBg};` : ""} }\n\n` +
     cssRules.join("\n\n");
 
   const styleBlock = `  <style>\n${stylesheet.replace(/^/gm, "    ")}\n  </style>`;
@@ -204,12 +295,40 @@ const hasImageFill = (n: SceneNode): boolean =>
   Array.isArray(n.fills) &&
   n.fills.some((f) => f.visible !== false && f.type === "IMAGE");
 
-// --- semantic tag resolution -------------------------------------------------
-// All heuristics are offline and conservative: a node only leaves <div>/<p> when
-// a signal is strong, otherwise it keeps the neutral default (never a regression).
+// A container is an icon/illustration when its whole subtree is vector art:
+// at least one real vector, and no text or image anywhere. Such nodes export
+// cleanly as a single SVG; anything with text (a card, a button) does not.
+function isIconContainer(node: SceneNode): boolean {
+  if (!("children" in node) || node.children.length === 0) return false;
+  // Icons are small; cap the size so real sections or large vector art aren't
+  // flattened into one SVG. ponytail: raise the cap if big vector logos need it.
+  if ("width" in node && (node.width > 128 || node.height > 128)) return false;
+  let hasVector = false;
+  let ok = true;
+  const walk = (n: SceneNode) => {
+    if (!ok) return;
+    if (n.type === "TEXT" || hasImageFill(n)) {
+      ok = false;
+      return;
+    }
+    if (isVectorLike(n)) hasVector = true;
+    if ("children" in n) n.children.forEach(walk);
+  };
+  node.children.forEach(walk);
+  return ok && hasVector;
+}
 
-// The most common text size is treated as body; larger sizes become headings,
-// ranked biggest -> h1. This works even when no layer is named.
+// --- semantic tag resolution -------------------------------------------------
+// All heuristics are offline and deliberately conservative: a node only leaves
+// the neutral <div>/<p> when a signal is strong, so a wrong guess never wins
+// over the safe default and the markup stays valid.
+
+const HEADING_LEVELS = 4; // never emit past h4
+const HEADING_RATIO = 1.2; // a heading must be at least 20% larger than body
+const HEADING_MAX_CHARS = 40; // headings are short; long text stays a paragraph
+
+// The most common text size is treated as body. Only the few sizes clearly
+// larger than body become headings (h1..h4), so body copy is never promoted.
 function headingMap(root: SceneNode): Map<number, string> {
   const sizes: number[] = [];
   const walk = (n: SceneNode) => {
@@ -236,74 +355,66 @@ function headingMap(root: SceneNode): Map<number, string> {
   });
 
   Array.from(new Set(sizes))
-    .filter((s) => s > body)
+    .filter((s) => s >= body * HEADING_RATIO)
     .sort((a, b) => b - a)
-    .forEach((s, i) => map.set(s, "h" + Math.min(i + 1, 6)));
+    .slice(0, HEADING_LEVELS)
+    .forEach((s, i) => map.set(s, "h" + (i + 1)));
   return map;
 }
 
-function textTag(node: TextNode, headings: Map<number, string>): string {
+function textTag(
+  node: TextNode,
+  headings: Map<number, string>,
+  interactive: boolean,
+): string {
   const link = node.hyperlink;
-  if (link && typeof link === "object" && link.type === "URL") return "a";
+  if (!interactive && link && typeof link === "object" && link.type === "URL") {
+    return "a";
+  }
+  // Only short text at a heading size becomes a heading; paragraphs stay <p>.
   if (typeof node.fontSize === "number") {
     const h = headings.get(Math.round(node.fontSize));
-    if (h) return h;
+    if (h && node.characters.length <= HEADING_MAX_CHARS && !node.characters.includes("\n")) {
+      return h;
+    }
   }
   return "p";
 }
 
-const NAME_TAGS: [RegExp, string][] = [
+// Keywords that read reliably from a layer name at any depth.
+const INLINE_TAGS: [RegExp, string][] = [
   [/\b(nav|navbar|navigation)\b/, "nav"],
-  [/\b(header|hero|masthead)\b/, "header"],
   [/\bfooter\b/, "footer"],
   [/\b(aside|sidebar)\b/, "aside"],
   [/\b(article|blog\s*post)\b/, "article"],
-  [/\bsection\b/, "section"],
-  [/\bmain\b/, "main"],
   [/\b(list|menu)\b/, "ul"],
-  [/\b(button|btn|cta)\b/, "button"],
 ];
+// "section" and "main" are common words in group names, so they only count for
+// the page's top-level bands, not for nested groups like "name section".
+const BAND_TAGS: [RegExp, string][] = [
+  [/\bheader\b/, "header"],
+  [/\b(section|hero)\b/, "section"],
+  [/\bmain\b/, "main"],
+];
+const BUTTON_NAME = /\b(button|btn|cta)\b/;
 
-function containerTag(node: SceneNode): string {
+function containerTag(node: SceneNode, topBand: boolean): string {
   const name = (node.name || "").toLowerCase();
-  for (const [re, tag] of NAME_TAGS) if (re.test(name)) return tag;
-  if (looksLikeButton(node)) return "button";
+  for (const [re, tag] of INLINE_TAGS) if (re.test(name)) return tag;
+  if (topBand) for (const [re, tag] of BAND_TAGS) if (re.test(name)) return tag;
+  // A button, only from its name, and never when it actually wraps buttons
+  // (e.g. a "button row"), which would nest a button inside a button.
+  if (BUTTON_NAME.test(name) && !wrapsButton(node)) return "button";
   return "div";
 }
 
-// A framed box with a fill, rounded corners, and exactly one short text child
-// reads as a button even with no name to go on.
-function looksLikeButton(node: SceneNode): boolean {
-  if (
-    node.type !== "FRAME" &&
-    node.type !== "INSTANCE" &&
-    node.type !== "COMPONENT"
-  ) {
-    return false;
-  }
-  if (!("fills" in node) || !Array.isArray(node.fills) || node.fills.length === 0) {
-    return false;
-  }
-  const radius =
-    "cornerRadius" in node && typeof node.cornerRadius === "number"
-      ? node.cornerRadius
-      : 0;
-  if (radius <= 0) return false;
-
-  const texts = textNodesIn(node);
-  if (texts.length !== 1) return false;
-  const chars = texts[0].characters;
-  return chars.length > 0 && chars.length <= 25 && !chars.includes("\n");
-}
-
-function textNodesIn(node: SceneNode): TextNode[] {
-  const out: TextNode[] = [];
-  const walk = (n: SceneNode) => {
-    if (n.type === "TEXT") out.push(n);
-    else if ("children" in n) n.children.forEach(walk);
-  };
-  if ("children" in node) node.children.forEach(walk);
-  return out;
+// True if a descendant looks like a button by name, meaning this node is a
+// container of buttons rather than a button itself.
+function wrapsButton(node: SceneNode): boolean {
+  if (!("children" in node)) return false;
+  return node.children.some(
+    (c) => BUTTON_NAME.test((c.name || "").toLowerCase()) || wrapsButton(c),
+  );
 }
 
 function positionAndSize(
@@ -378,10 +489,13 @@ function applyLayout(node: SceneNode, rule: Rule) {
 
   if (n.primaryAxisAlignItems !== "SPACE_BETWEEN" && n.itemSpacing > 0)
     rule.gap = `${Math.round(n.itemSpacing)}px`;
-  if (n.clipsContent) rule.overflow = "hidden";
 }
 
 function applyBoxDecoration(node: SceneNode, rule: Rule) {
+  // Clip children to rounded corners for any frame Figma clips, auto-layout or
+  // not, so a bottom child can't poke square corners past a rounded parent.
+  if ("clipsContent" in node && node.clipsContent) rule.overflow = "hidden";
+
   // Background.
   if ("fills" in node && Array.isArray(node.fills)) {
     const bg = solidFill(node.fills) || linearGradient(node.fills);
@@ -448,12 +562,26 @@ function applyBoxDecoration(node: SceneNode, rule: Rule) {
   }
 }
 
-function applyTextStyle(
-  node: TextNode,
+// Fields shared by a TextNode and one styled segment. On the node these can be
+// figma.mixed; on a segment they are always concrete.
+type TextStyleSource = {
+  fontName: FontName | PluginAPI["mixed"];
+  fontSize: number | PluginAPI["mixed"];
+  fills: ReadonlyArray<Paint> | PluginAPI["mixed"];
+  lineHeight: LineHeight | PluginAPI["mixed"];
+  letterSpacing: LetterSpacing | PluginAPI["mixed"];
+  textCase: TextCase | PluginAPI["mixed"];
+  textDecoration: TextDecoration | PluginAPI["mixed"];
+};
+
+// Font, size, color, and inline text properties. Anything mixed is skipped, so
+// this works for a uniform node and for a single styled segment alike.
+function styleRule(
+  src: TextStyleSource,
   rule: Rule,
   addFont: (family: string, weight: number) => void,
 ) {
-  const fn = node.fontName;
+  const fn = src.fontName;
   if (fn !== figma.mixed) {
     const weight = styleToWeight(fn.style);
     rule["font-family"] = `'${fn.family}', sans-serif`;
@@ -463,21 +591,13 @@ function applyTextStyle(
     addFont(fn.family, weight);
   }
 
-  if (node.fontSize !== figma.mixed)
-    rule["font-size"] = `${Math.round(node.fontSize)}px`;
+  if (src.fontSize !== figma.mixed)
+    rule["font-size"] = `${Math.round(src.fontSize)}px`;
 
-  const color = "fills" in node ? solidFill(node.fills) : null;
+  const color = solidFill(src.fills);
   if (color) rule.color = color;
 
-  const align: { [k: string]: string } = {
-    LEFT: "left",
-    CENTER: "center",
-    RIGHT: "right",
-    JUSTIFIED: "justify",
-  };
-  rule["text-align"] = align[node.textAlignHorizontal] || "left";
-
-  const lh = node.lineHeight;
+  const lh = src.lineHeight;
   if (lh !== figma.mixed && lh.unit !== "AUTO") {
     rule["line-height"] =
       lh.unit === "PIXELS"
@@ -485,7 +605,7 @@ function applyTextStyle(
         : `${round(lh.value / 100)}`;
   }
 
-  const ls = node.letterSpacing;
+  const ls = src.letterSpacing;
   if (ls !== figma.mixed && ls.value !== 0) {
     rule["letter-spacing"] =
       ls.unit === "PERCENT"
@@ -498,14 +618,21 @@ function applyTextStyle(
     LOWER: "lowercase",
     TITLE: "capitalize",
   };
-  if (node.textCase !== figma.mixed && tcase[node.textCase])
-    rule["text-transform"] = tcase[node.textCase];
+  if (src.textCase !== figma.mixed && tcase[src.textCase])
+    rule["text-transform"] = tcase[src.textCase];
 
-  if (node.textDecoration === "UNDERLINE")
+  if (src.textDecoration === "UNDERLINE")
     rule["text-decoration"] = "underline";
-  else if (node.textDecoration === "STRIKETHROUGH")
+  else if (src.textDecoration === "STRIKETHROUGH")
     rule["text-decoration"] = "line-through";
 }
+
+const ALIGN: { [k: string]: string } = {
+  LEFT: "left",
+  CENTER: "center",
+  RIGHT: "right",
+  JUSTIFIED: "justify",
+};
 
 // --- value converters --------------------------------------------------------
 
