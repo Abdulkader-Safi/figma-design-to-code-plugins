@@ -72,6 +72,51 @@
   button { font: inherit; cursor: pointer; border: none; }
   button:disabled { opacity: 0.4; cursor: default; }
 
+  .toggle {
+    display: flex;
+    align-items: flex-start;
+    gap: 9px;
+    margin-bottom: 14px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .toggle input { position: absolute; opacity: 0; width: 0; height: 0; }
+  .toggle .box {
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
+    margin-top: 1px;
+    border-radius: 5px;
+    border: 1px solid var(--hairline-strong);
+    background: var(--surface);
+    transition: background 0.15s ease, border-color 0.15s ease;
+    position: relative;
+  }
+  .toggle input:checked + .box {
+    background: var(--clay);
+    border-color: var(--clay);
+  }
+  .toggle input:checked + .box::after {
+    content: "";
+    position: absolute;
+    left: 5px;
+    top: 2px;
+    width: 4px;
+    height: 8px;
+    border: solid #0c0b0a;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+  }
+  .toggle input:focus-visible + .box { outline: 2px solid var(--clay); outline-offset: 2px; }
+  .toggle-text { font-size: 12px; color: var(--text); line-height: 1.35; }
+  .toggle-text .hint {
+    display: block;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+
   .cta {
     width: 100%;
     padding: 12px 16px;
@@ -166,6 +211,12 @@
 <div class="kicker">Design &rarr; HTML</div>
 <h1>Export your <em>frame</em></h1>
 <p class="sub">Select a frame, then export it to a self-contained HTML file with layout, colors, and Google fonts.</p>
+
+<label class="toggle">
+  <input type="checkbox" id="semantic" checked />
+  <span class="box"></span>
+  <span class="toggle-text">Semantic tags<span class="hint">nav, header, headings, buttons where clear</span></span>
+</label>
 
 <button id="export" class="cta">Export selected frame</button>
 
@@ -274,7 +325,7 @@
 
   $("export").onclick = () => {
     setStatus("Generating…");
-    parent.postMessage({ pluginMessage: { type: "export" } }, "*");
+    parent.postMessage({ pluginMessage: { type: "export", semantic: $("semantic").checked } }, "*");
   };
 
   $("copy").onclick = () => {
