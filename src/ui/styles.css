@@ -1,0 +1,110 @@
+@import "tailwindcss";
+
+/* Scan the panel markup for utility classes (ui.html itself is generated). */
+@source "./ui.template.html";
+
+/* Editorial workbench theme. Retheme by editing these tokens; they become
+   utilities (bg-surface, text-clay, border-hairline, font-display, ...). */
+@theme {
+    --color-bg: #0c0b0a;
+    --color-surface: #16140f;
+    --color-text: #f5f2ea;
+    --color-muted: #8d887e;
+    --color-clay: #d97a4f;
+    --color-clay-hover: #e78c62;
+    --color-sand: #cbb79b;
+    --color-gold: #d9b779;
+    --color-dim: #6f6a61;
+    --color-hairline: rgba(245, 242, 234, 0.12);
+    --color-hairline-strong: rgba(245, 242, 234, 0.22);
+    --font-display: "Space Grotesk", system-ui, sans-serif;
+    --font-body: "Inter", system-ui, sans-serif;
+    --font-mono:
+        "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+@layer base {
+    html,
+    body {
+        height: 100%;
+    }
+    body {
+        margin: 0;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        padding: 22px 22px 0;
+        font-family: var(--font-body);
+        font-size: 12px;
+        color: var(--color-text);
+        background:
+            radial-gradient(
+                120% 90% at 100% 0%,
+                rgba(217, 122, 79, 0.06),
+                transparent 55%
+            ),
+            var(--color-bg);
+    }
+    button {
+        font: inherit;
+        cursor: pointer;
+        border: none;
+    }
+    button:disabled {
+        opacity: 0.4;
+        cursor: default;
+    }
+}
+
+/* Stateful classes the panel JS toggles at runtime: active tabs, the status
+   colour, and the syntax-highlight tokens injected via innerHTML. Tailwind's
+   scanner can't see dynamically-added classes, so they live here, composed from
+   utilities with @apply. */
+@layer components {
+    .tab {
+        @apply cursor-pointer rounded-[7px] border border-hairline bg-transparent px-[11px] py-[7px] font-mono text-[10px] uppercase tracking-[0.06em] text-muted transition-[color,border-color,background] duration-150;
+    }
+    .tab:hover {
+        @apply border-hairline-strong;
+    }
+    .tab.active {
+        @apply border-hairline-strong bg-surface text-clay;
+    }
+
+    .seg {
+        @apply inline-flex overflow-hidden rounded-lg border border-hairline bg-surface;
+    }
+    .seg .tab {
+        @apply rounded-none border-0 bg-transparent;
+    }
+    .seg .tab + .tab {
+        @apply border-l border-hairline;
+    }
+    .seg .tab.active {
+        @apply bg-[rgba(245,242,234,0.06)] text-clay;
+    }
+
+    .status {
+        @apply mx-0.5 my-3 min-h-[14px] font-mono text-[11px] text-muted;
+    }
+    .status.error {
+        @apply text-clay;
+    }
+
+    .c-tag {
+        @apply text-clay;
+    }
+    .c-attr {
+        @apply text-sand;
+    }
+    .c-str {
+        @apply text-gold;
+    }
+    .c-com {
+        @apply text-dim;
+    }
+    .c-punc {
+        @apply text-muted;
+    }
+}

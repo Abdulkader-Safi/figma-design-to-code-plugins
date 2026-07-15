@@ -6,348 +6,55 @@
 />
 
 <style>
-    /* Editorial workbench theme. Retheme by editing these. */
-    :root {
-        --bg: #0c0b0a;
-        --surface: #16140f;
-        --text: #f5f2ea;
-        --muted: #8d887e;
-        --hairline: rgba(245, 242, 234, 0.12);
-        --hairline-strong: rgba(245, 242, 234, 0.22);
-        --clay: #d97a4f;
-        --sand: #cbb79b;
-        --gold: #d9b779;
-        --dim: #6f6a61;
-        --display: "Space Grotesk", system-ui, sans-serif;
-        --body: "Inter", system-ui, sans-serif;
-        --mono:
-            "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-    }
-
-    * {
-        box-sizing: border-box;
-    }
-
-    html,
-    body {
-        height: 100%;
-    }
-
-    body {
-        margin: 0;
-        height: 100vh;
-        display: flex;
-        flex-direction: column;
-        overflow: hidden;
-        padding: 22px 22px 0;
-        font-family: var(--body);
-        font-size: 12px;
-        color: var(--text);
-        background:
-            radial-gradient(
-                120% 90% at 100% 0%,
-                rgba(217, 122, 79, 0.06),
-                transparent 55%
-            ),
-            var(--bg);
-    }
-
-    .kicker {
-        font-family: var(--mono);
-        font-size: 10px;
-        font-weight: 500;
-        letter-spacing: 0.3em;
-        text-transform: uppercase;
-        color: var(--clay);
-        margin-bottom: 10px;
-    }
-
-    h1 {
-        font-family: var(--display);
-        font-weight: 700;
-        font-size: 27px;
-        line-height: 0.95;
-        letter-spacing: -0.02em;
-        margin: 0 0 9px;
-    }
-    h1 em {
-        color: var(--clay);
-        font-style: normal;
-    }
-
-    .sub {
-        color: var(--muted);
-        line-height: 1.5;
-        margin: 0 0 16px;
-        max-width: 36ch;
-    }
-
-    button {
-        font: inherit;
-        cursor: pointer;
-        border: none;
-    }
-    button:disabled {
-        opacity: 0.4;
-        cursor: default;
-    }
-
-    .toggle {
-        display: flex;
-        align-items: center;
-        gap: 9px;
-        cursor: pointer;
-        user-select: none;
-    }
-    .toggle input {
-        position: absolute;
-        opacity: 0;
-        width: 0;
-        height: 0;
-    }
-    .toggle .box {
-        flex-shrink: 0;
-        width: 16px;
-        height: 16px;
-        border-radius: 5px;
-        border: 1px solid var(--hairline-strong);
-        background: var(--surface);
-        transition:
-            background 0.15s ease,
-            border-color 0.15s ease;
-        position: relative;
-    }
-    .toggle input:checked + .box {
-        background: var(--clay);
-        border-color: var(--clay);
-    }
-    .toggle input:checked + .box::after {
-        content: "";
-        position: absolute;
-        left: 5px;
-        top: 2px;
-        width: 4px;
-        height: 8px;
-        border: solid #0c0b0a;
-        border-width: 0 2px 2px 0;
-        transform: rotate(45deg);
-    }
-    .toggle input:focus-visible + .box {
-        outline: 2px solid var(--clay);
-        outline-offset: 2px;
-    }
-    .toggle-text {
-        font-size: 13px;
-        color: var(--text);
-        line-height: 1.2;
-    }
-
-    .cta {
-        width: 100%;
-        padding: 12px 16px;
-        border-radius: 9px;
-        font-weight: 600;
-        color: #0c0b0a;
-        background: var(--clay);
-        transition: background 0.15s ease;
-    }
-    .cta:hover {
-        background: #e78c62;
-    }
-
-    .status {
-        font-family: var(--mono);
-        font-size: 11px;
-        color: var(--muted);
-        margin: 12px 2px;
-        min-height: 14px;
-    }
-    .status.error {
-        color: var(--clay);
-    }
-
-    /* Two parallel option fields, sharing a baseline row. */
-    .options {
-        display: flex;
-        justify-content: space-between;
-        align-items: stretch;
-        gap: 20px;
-        margin-bottom: 18px;
-    }
-    .field {
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-        min-width: 0;
-    }
-    .field-label {
-        font-family: var(--mono);
-        font-size: 10px;
-        font-weight: 500;
-        letter-spacing: 0.18em;
-        text-transform: uppercase;
-        color: var(--muted);
-    }
-    .field-control {
-        display: flex;
-        align-items: center;
-        min-height: 34px;
-    }
-
-    /* Styling picker: one joined segmented control, not two detached pills. */
-    .seg {
-        display: inline-flex;
-        border: 1px solid var(--hairline);
-        border-radius: 8px;
-        background: var(--surface);
-        overflow: hidden;
-    }
-    .seg .tab {
-        border: 0;
-        border-radius: 0;
-        background: transparent;
-    }
-    .seg .tab + .tab {
-        border-left: 1px solid var(--hairline);
-    }
-    .seg .tab.active {
-        color: var(--clay);
-        background: rgba(245, 242, 234, 0.06);
-    }
-
-    .tabs {
-        display: none;
-        gap: 6px;
-        margin-bottom: 8px;
-    }
-    .tab {
-        font-family: var(--mono);
-        font-size: 10px;
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
-        padding: 7px 11px;
-        border-radius: 7px;
-        border: 1px solid var(--hairline);
-        background: transparent;
-        color: var(--muted);
-        transition:
-            color 0.15s ease,
-            border-color 0.15s ease,
-            background 0.15s ease;
-    }
-    .tab:hover {
-        border-color: var(--hairline-strong);
-    }
-    .tab.active {
-        color: var(--clay);
-        border-color: var(--hairline-strong);
-        background: var(--surface);
-    }
-
-    .code {
-        display: none;
-        flex: 1;
-        min-height: 0;
-        margin: 0;
-        padding: 12px 14px;
-        border: 1px solid var(--hairline);
-        border-radius: 10px;
-        background: var(--surface);
-        overflow: auto;
-        font-family: var(--mono);
-        font-size: 11px;
-        line-height: 1.55;
-        white-space: pre;
-        tab-size: 2;
-        color: var(--text);
-    }
-    .c-tag {
-        color: var(--clay);
-    }
-    .c-attr {
-        color: var(--sand);
-    }
-    .c-str {
-        color: var(--gold);
-    }
-    .c-com {
-        color: var(--dim);
-    }
-    .c-punc {
-        color: var(--muted);
-    }
-
-    .actions {
-        display: none;
-        gap: 10px;
-        margin-top: 10px;
-    }
-    .ghost {
-        flex: 1;
-        padding: 11px 14px;
-        border-radius: 9px;
-        font-weight: 500;
-        color: var(--text);
-        background: var(--surface);
-        border: 1px solid var(--hairline);
-        transition: border-color 0.15s ease;
-    }
-    .ghost:hover {
-        border-color: var(--hairline-strong);
-    }
-
-    footer {
-        flex-shrink: 0;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 12px;
-        margin-top: 14px;
-        padding: 13px 0 15px;
-        border-top: 1px solid var(--hairline);
-        font-family: var(--mono);
-        font-size: 10px;
-    }
-    footer a {
-        text-decoration: none;
-    }
-    .by {
-        color: var(--muted);
-        transition: color 0.15s ease;
-    }
-    .by:hover {
-        color: var(--text);
-    }
-    .support {
-        color: var(--clay);
-        font-weight: 500;
-    }
-    .support:hover {
-        text-decoration: underline;
-    }
+    /* __TAILWIND_CSS__ */
 </style>
 
-<div class="kicker">Design &rarr; HTML</div>
-<h1>Export your <em>frame</em></h1>
-<p class="sub">
+<div
+    class="mb-2.5 font-mono text-[10px] font-medium uppercase tracking-[0.3em] text-clay"
+>
+    Design &rarr; HTML
+</div>
+<h1
+    class="m-0 mb-[9px] font-display text-[27px] font-bold leading-[0.95] tracking-[-0.02em]"
+>
+    Export your <em class="text-clay not-italic">frame</em>
+</h1>
+<p class="m-0 mb-4 max-w-[36ch] leading-[1.5] text-muted">
     Select a frame, then export it to a self-contained HTML file with layout,
     colors, and Google fonts.
 </p>
 
-<div class="options">
-    <div class="field">
-        <span class="field-label">Output</span>
-        <div class="field-control">
-            <label class="toggle">
-                <input type="checkbox" id="semantic" checked />
-                <span class="box"></span>
-                <span class="toggle-text">Semantic tags</span>
+<div class="mb-[18px] flex items-stretch justify-between gap-5">
+    <div class="flex min-w-0 flex-col gap-2.5">
+        <span
+            class="font-mono text-[10px] font-medium uppercase tracking-[0.18em] text-muted"
+            >Output</span
+        >
+        <div class="flex min-h-[34px] items-center">
+            <label
+                class="flex cursor-pointer select-none items-center gap-[9px]"
+            >
+                <input
+                    type="checkbox"
+                    id="semantic"
+                    checked
+                    class="peer sr-only"
+                />
+                <span
+                    class="relative h-4 w-4 shrink-0 rounded-[5px] border border-hairline-strong bg-surface transition-[background,border-color] duration-150 after:absolute after:left-[5px] after:top-[2px] after:h-2 after:w-1 after:rotate-45 after:border-b-2 after:border-r-2 after:border-solid after:border-[#0c0b0a] after:opacity-0 after:content-[''] peer-checked:border-clay peer-checked:bg-clay peer-checked:after:opacity-100 peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-clay"
+                ></span>
+                <span class="text-[13px] leading-[1.2] text-text"
+                    >Semantic tags</span
+                >
             </label>
         </div>
     </div>
-    <div class="field">
-        <span class="field-label">Styling</span>
-        <div class="field-control">
+    <div class="flex min-w-0 flex-col gap-2.5">
+        <span
+            class="font-mono text-[10px] font-medium uppercase tracking-[0.18em] text-muted"
+            >Styling</span
+        >
+        <div class="flex min-h-[34px] items-center">
             <div class="seg" id="framework">
                 <button class="tab active" data-fw="css">CSS</button>
                 <button class="tab" data-fw="tailwind">Tailwind</button>
@@ -356,33 +63,53 @@
     </div>
 </div>
 
-<button id="export" class="cta">Export selected frame</button>
+<button
+    id="export"
+    class="w-full cursor-pointer rounded-[9px] border-0 bg-clay px-4 py-3 font-semibold text-[#0c0b0a] transition-colors duration-150 hover:bg-clay-hover"
+>
+    Export selected frame
+</button>
 
 <div id="status" class="status"></div>
 
-<div class="tabs" id="tabs">
+<div class="hidden gap-1.5 mb-2" id="tabs">
     <button class="tab active" data-mode="combined">HTML + CSS</button>
     <button class="tab" data-mode="html">HTML</button>
     <button class="tab" data-mode="css">CSS</button>
 </div>
 
-<pre class="code" id="output"></pre>
+<pre
+    id="output"
+    class="hidden m-0 min-h-0 flex-1 overflow-auto whitespace-pre rounded-[10px] border border-hairline bg-surface px-3.5 py-3 font-mono text-[11px] leading-[1.55] text-text [tab-size:2]"
+></pre>
 
-<div class="actions" id="actions">
-    <button id="copy" class="ghost">Copy</button>
-    <button id="download" class="ghost">Download .html</button>
+<div id="actions" class="hidden gap-2.5 mt-2.5">
+    <button
+        id="copy"
+        class="flex-1 cursor-pointer rounded-[9px] border border-hairline bg-surface px-3.5 py-[11px] font-medium text-text transition-colors duration-150 hover:border-hairline-strong"
+    >
+        Copy
+    </button>
+    <button
+        id="download"
+        class="flex-1 cursor-pointer rounded-[9px] border border-hairline bg-surface px-3.5 py-[11px] font-medium text-text transition-colors duration-150 hover:border-hairline-strong"
+    >
+        Download .html
+    </button>
 </div>
 
-<footer>
+<footer
+    class="mt-3.5 flex shrink-0 items-center justify-between gap-3 border-t border-hairline pb-[15px] pt-[13px] font-mono text-[10px]"
+>
     <a
-        class="by"
+        class="text-muted no-underline transition-colors duration-150 hover:text-text"
         href="https://abdulkadersafi.com"
         target="_blank"
         rel="noopener"
         >Created by Abdulkader Safi</a
     >
     <a
-        class="support"
+        class="font-medium text-clay no-underline hover:underline"
         href="https://ko-fi.com/abdulkadersafi"
         target="_blank"
         rel="noopener"

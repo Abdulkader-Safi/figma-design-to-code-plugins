@@ -27,15 +27,19 @@
 
 ```
 npm install        # first time
-npm run build       # bundle src/ -> code.js (esbuild)
-npm run watch       # rebuild on save
+npm run build       # build ui.html + code.js
+npm run build:js    # bundle src/ -> code.js (esbuild)
+npm run build:ui    # compile Tailwind + inline into ui.html
+npm run watch       # rebuild code.js on save
 npm run typecheck   # tsc, no emit
 npm run lint        # eslint
 ```
 
 Load the plugin in Figma via **Plugins > Development > Import plugin from manifest** and pick `manifest.json`.
 
-Figma loads exactly one main script (`code.js`) and one UI file (`ui.html`). The plugin logic lives in `src/`, split by concern, and esbuild bundles it into the single `code.js` the manifest references. `ui.html` is the panel iframe. The two talk over `postMessage`.
+Figma loads exactly one main script (`code.js`) and one UI file (`ui.html`), so both are generated build artifacts (git-ignored). Run `npm run build` before loading the plugin.
+
+The plugin logic lives in `src/`, split by concern, and esbuild bundles it into `code.js`:
 
 ```
 src/
@@ -50,6 +54,18 @@ src/
   nodes.ts       node-shape predicates (vector, icon, image, auto-layout)
   document.ts    Google Fonts link + HTML shell
   types.ts       the shared Rule type
+```
+
+The panel UI is styled with Tailwind v4. Because the Figma iframe can't load a
+CDN, the stylesheet is compiled at build time and inlined into `ui.html`:
+
+```
+src/ui/
+  ui.template.html  panel markup (utility classes) + the panel script
+  styles.css        Tailwind entry: @theme palette + a small @layer for the
+                    stateful classes the script toggles (tabs, status, tokens)
+scripts/
+  build-ui.mjs      inlines the compiled CSS into the template -> ui.html
 ```
 
 ## Publishing
