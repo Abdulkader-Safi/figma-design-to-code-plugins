@@ -290,7 +290,8 @@
     ta.select();
     document.execCommand("copy");
     ta.remove();
-    setStatus("Copied the " + label() + " to clipboard.");
+    const what = state.mode === "css" ? "CSS" : state.mode === "html" ? "HTML" : "HTML and CSS";
+    setStatus("Copied the " + what + " to clipboard.");
   };
 
   $("download").onclick = () => {
@@ -326,10 +327,6 @@
     $("tabs").style.display = on && state.framework === "css" ? "flex" : "none";
     $("output").style.display = on ? "block" : "none";
     $("actions").style.display = on ? "flex" : "none";
-  }
-
-  function label() {
-    return state.mode === "css" ? "CSS" : state.mode === "html" ? "HTML" : "HTML and CSS";
   }
 
   function setStatus(text, isError) {
