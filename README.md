@@ -29,3 +29,13 @@ npm run lint        # eslint
 Load the plugin in Figma via **Plugins > Development > Import plugin from manifest** and pick `manifest.json`.
 
 `code.ts` runs in the Figma sandbox (has the `figma` API). `ui.html` is the panel iframe. They talk over `postMessage`.
+
+## Support
+
+If this saves you time, you can buy me a coffee. It keeps the plugin maintained.
+
+[![Support on Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/abdulkadersafi)
+
+## Author
+
+Created by Abdulkader Safi. [abdulkadersafi.com](https://abdulkadersafi.com)
