@@ -1,6 +1,10 @@
-# Design to HTML
+<p align="center">
+  <img src="assets/logo.png" alt="Design to HTML logo" width="128" height="128" />
+</p>
 
-A Figma plugin that exports a selected frame to a single self-contained HTML file, keeping the layout, colors, typography, and Google fonts.
+<h1 align="center">Design to HTML</h1>
+
+<p align="center">A Figma plugin that exports a selected frame to a single self-contained HTML file, keeping the layout, colors, typography, and Google fonts.</p>
 
 ## What it does
 
@@ -29,6 +33,10 @@ npm run lint        # eslint
 Load the plugin in Figma via **Plugins > Development > Import plugin from manifest** and pick `manifest.json`.
 
 `code.ts` runs in the Figma sandbox (has the `figma` API). `ui.html` is the panel iframe. They talk over `postMessage`.
+
+## Publishing
+
+Figma's `manifest.json` has no icon field, so the plugin icon is set in the Publish modal, not in code. When publishing, upload `assets/logo.png` (128x128) as the plugin icon.
 
 ## Support
 
