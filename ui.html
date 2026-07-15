@@ -15,6 +15,9 @@
     --hairline: rgba(245, 242, 234, 0.12);
     --hairline-strong: rgba(245, 242, 234, 0.22);
     --clay: #d97a4f;
+    --sand: #cbb79b;
+    --gold: #d9b779;
+    --dim: #6f6a61;
     --display: "Space Grotesk", system-ui, sans-serif;
     --body: "Inter", system-ui, sans-serif;
     --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -22,12 +25,15 @@
 
   * { box-sizing: border-box; }
 
+  html, body { height: 100%; }
+
   body {
     margin: 0;
-    min-height: 100vh;
+    height: 100vh;
     display: flex;
     flex-direction: column;
-    padding: 24px 22px 18px;
+    overflow: hidden;
+    padding: 22px 22px 0;
     font-family: var(--body);
     font-size: 12px;
     color: var(--text);
@@ -43,38 +49,33 @@
     letter-spacing: 0.3em;
     text-transform: uppercase;
     color: var(--clay);
-    margin-bottom: 12px;
+    margin-bottom: 10px;
   }
 
   h1 {
     font-family: var(--display);
     font-weight: 700;
-    font-size: 30px;
+    font-size: 27px;
     line-height: 0.95;
     letter-spacing: -0.02em;
-    margin: 0 0 10px;
+    margin: 0 0 9px;
   }
-
   h1 em { color: var(--clay); font-style: normal; }
 
   .sub {
     color: var(--muted);
-    line-height: 1.55;
-    margin: 0 0 20px;
-    max-width: 34ch;
+    line-height: 1.5;
+    margin: 0 0 16px;
+    max-width: 36ch;
   }
 
-  button {
-    font: inherit;
-    cursor: pointer;
-    border: none;
-    border-radius: 9px;
-  }
+  button { font: inherit; cursor: pointer; border: none; }
   button:disabled { opacity: 0.4; cursor: default; }
 
   .cta {
     width: 100%;
-    padding: 13px 16px;
+    padding: 12px 16px;
+    border-radius: 9px;
     font-weight: 600;
     color: #0c0b0a;
     background: var(--clay);
@@ -86,32 +87,55 @@
     font-family: var(--mono);
     font-size: 11px;
     color: var(--muted);
-    margin: 14px 2px;
-    min-height: 15px;
+    margin: 12px 2px;
+    min-height: 14px;
   }
   .status.error { color: var(--clay); }
 
-  textarea {
+  .tabs { display: none; gap: 6px; margin-bottom: 8px; }
+  .tab {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 7px 11px;
+    border-radius: 7px;
+    border: 1px solid var(--hairline);
+    background: transparent;
+    color: var(--muted);
+    transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+  }
+  .tab:hover { border-color: var(--hairline-strong); }
+  .tab.active { color: var(--clay); border-color: var(--hairline-strong); background: var(--surface); }
+
+  .code {
     display: none;
-    width: 100%;
-    height: 320px;
-    padding: 12px;
+    flex: 1;
+    min-height: 0;
+    margin: 0;
+    padding: 12px 14px;
     border: 1px solid var(--hairline);
     border-radius: 10px;
     background: var(--surface);
-    color: var(--text);
+    overflow: auto;
     font-family: var(--mono);
     font-size: 11px;
-    line-height: 1.5;
-    resize: vertical;
+    line-height: 1.55;
     white-space: pre;
+    tab-size: 2;
+    color: var(--text);
   }
+  .c-tag { color: var(--clay); }
+  .c-attr { color: var(--sand); }
+  .c-str { color: var(--gold); }
+  .c-com { color: var(--dim); }
+  .c-punc { color: var(--muted); }
 
   .actions { display: none; gap: 10px; margin-top: 10px; }
-
   .ghost {
     flex: 1;
     padding: 11px 14px;
+    border-radius: 9px;
     font-weight: 500;
     color: var(--text);
     background: var(--surface);
@@ -120,14 +144,14 @@
   }
   .ghost:hover { border-color: var(--hairline-strong); }
 
-  .spacer { flex: 1; min-height: 22px; }
-
   footer {
+    flex-shrink: 0;
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    padding-top: 14px;
+    margin-top: 14px;
+    padding: 13px 0 15px;
     border-top: 1px solid var(--hairline);
     font-family: var(--mono);
     font-size: 10px;
@@ -141,22 +165,24 @@
 
 <div class="kicker">Design &rarr; HTML</div>
 <h1>Export your <em>frame</em></h1>
-<p class="sub">
-  Select a frame, then export it to a self-contained HTML file with layout, colors, and Google fonts.
-</p>
+<p class="sub">Select a frame, then export it to a self-contained HTML file with layout, colors, and Google fonts.</p>
 
 <button id="export" class="cta">Export selected frame</button>
 
 <div id="status" class="status"></div>
 
-<textarea id="output" readonly spellcheck="false"></textarea>
+<div class="tabs" id="tabs">
+  <button class="tab active" data-mode="combined">HTML + CSS</button>
+  <button class="tab" data-mode="html">HTML</button>
+  <button class="tab" data-mode="css">CSS</button>
+</div>
 
-<div id="actions" class="actions">
+<pre class="code" id="output"></pre>
+
+<div class="actions" id="actions">
   <button id="copy" class="ghost">Copy</button>
   <button id="download" class="ghost">Download .html</button>
 </div>
-
-<div class="spacer"></div>
 
 <footer>
   <a class="by" href="https://abdulkadersafi.com" target="_blank" rel="noopener">Created by Abdulkader Safi</a>
@@ -165,7 +191,86 @@
 
 <script>
   const $ = (id) => document.getElementById(id);
-  let fileName = "export";
+  const state = { name: "export", combined: "", html: "", css: "", mode: "combined" };
+
+  const raw = () => state[state.mode];
+  const ext = () => (state.mode === "css" ? "css" : "html");
+
+  // --- syntax highlighting (offline, HTML + CSS) ---
+  const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const span = (cls, inner) => '<span class="' + cls + '">' + inner + "</span>";
+
+  function hlCSS(src) {
+    const re =
+      /(\/\*[\s\S]*?\*\/)|("[^"]*"|'[^']*')|(@[\w-]+)|(\*|[.#][\w-]+|[\w-]+)(?=[^{};]*\{)|([-\w]+)(\s*:\s*)([^;{}]*)(;?)|([{}])/g;
+    let out = "", last = 0, m;
+    while ((m = re.exec(src))) {
+      out += esc(src.slice(last, m.index));
+      if (m[1]) out += span("c-com", esc(m[1]));
+      else if (m[2]) out += span("c-str", esc(m[2]));
+      else if (m[3]) out += span("c-tag", esc(m[3]));
+      else if (m[4]) out += span("c-tag", esc(m[4]));
+      else if (m[5] !== undefined)
+        out += span("c-attr", esc(m[5])) + esc(m[6]) + span("c-str", esc(m[7])) + span("c-punc", esc(m[8]));
+      else if (m[9]) out += span("c-punc", esc(m[9]));
+      last = re.lastIndex;
+      if (m.index === re.lastIndex) re.lastIndex++;
+    }
+    return out + esc(src.slice(last));
+  }
+
+  function hlTag(tag) {
+    let first = true;
+    return tag.replace(
+      /(<\/?|\/?>|!DOCTYPE)|("[^"]*"|'[^']*')|(=)|([A-Za-z][\w:-]*)|(\s+)/g,
+      (m, punc, str, eq, name, sp) => {
+        if (punc) return span("c-punc", esc(punc));
+        if (str) return span("c-str", esc(str));
+        if (eq) return esc(eq);
+        if (sp) return sp;
+        if (name) {
+          if (first) { first = false; return span("c-tag", esc(name)); }
+          return span("c-attr", esc(name));
+        }
+        return esc(m);
+      },
+    );
+  }
+
+  function hlMarkup(src) {
+    const toks = src.match(/<!--[\s\S]*?-->|<[^>]*>|[^<]+/g) || [];
+    let out = "";
+    for (const t of toks) {
+      if (t.slice(0, 4) === "<!--") out += span("c-com", esc(t));
+      else if (t[0] === "<") out += hlTag(t);
+      else out += esc(t);
+    }
+    return out;
+  }
+
+  function hlHTML(src) {
+    const parts = src.split(/(<style[^>]*>|<\/style>)/i);
+    let out = "", inStyle = false;
+    for (const p of parts) {
+      if (!p) continue;
+      if (/^<style/i.test(p)) { out += hlTag(p); inStyle = true; }
+      else if (/^<\/style>/i.test(p)) { out += hlTag(p); inStyle = false; }
+      else out += inStyle ? hlCSS(p) : hlMarkup(p);
+    }
+    return out;
+  }
+
+  // --- render + actions ---
+  function render() {
+    document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t.dataset.mode === state.mode));
+    $("output").innerHTML = state.mode === "css" ? hlCSS(raw()) : hlHTML(raw());
+    $("output").scrollTop = 0;
+    $("download").textContent = "Download ." + ext();
+  }
+
+  document.querySelectorAll(".tab").forEach((t) => {
+    t.onclick = () => { state.mode = t.dataset.mode; render(); };
+  });
 
   $("export").onclick = () => {
     setStatus("Generating…");
@@ -173,16 +278,21 @@
   };
 
   $("copy").onclick = () => {
-    $("output").select();
+    const ta = document.createElement("textarea");
+    ta.value = raw();
+    document.body.appendChild(ta);
+    ta.select();
     document.execCommand("copy");
-    setStatus("Copied to clipboard.");
+    ta.remove();
+    setStatus("Copied the " + label() + " to clipboard.");
   };
 
   $("download").onclick = () => {
-    const blob = new Blob([$("output").value], { type: "text/html" });
+    const type = state.mode === "css" ? "text/css" : "text/html";
+    const blob = new Blob([raw()], { type });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = fileName + ".html";
+    a.download = state.name + "." + ext();
     a.click();
     URL.revokeObjectURL(a.href);
   };
@@ -192,16 +302,29 @@
     if (!msg) return;
     if (msg.type === "error") {
       setStatus(msg.message, true);
-      $("output").style.display = "none";
-      $("actions").style.display = "none";
+      show(false);
     } else if (msg.type === "result") {
-      fileName = msg.name || "export";
-      $("output").value = msg.code;
-      $("output").style.display = "block";
-      $("actions").style.display = "flex";
-      setStatus("Done. " + msg.code.split("\n").length + " lines generated.");
+      state.name = msg.name || "export";
+      state.combined = msg.combined;
+      state.html = msg.html;
+      state.css = msg.css;
+      state.mode = "combined";
+      show(true);
+      render();
+      setStatus("Done. " + msg.combined.split("\n").length + " lines generated.");
     }
   };
+
+  function show(on) {
+    const d = on ? "" : "none";
+    $("tabs").style.display = on ? "flex" : "none";
+    $("output").style.display = on ? "block" : "none";
+    $("actions").style.display = on ? "flex" : "none";
+  }
+
+  function label() {
+    return state.mode === "css" ? "CSS" : state.mode === "html" ? "HTML" : "HTML and CSS";
+  }
 
   function setStatus(text, isError) {
     const s = $("status");

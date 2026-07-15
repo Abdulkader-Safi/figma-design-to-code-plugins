@@ -25,11 +25,13 @@ figma.ui.onmessage = async (msg: { type: string }) => {
   }
 
   try {
-    const code = await generate(root);
+    const out = await generate(root);
     figma.ui.postMessage({
       type: "result",
-      code,
       name: sanitizeFileName(root.name),
+      combined: out.combined,
+      html: out.html,
+      css: out.css,
     });
   } catch (e) {
     figma.ui.postMessage({
@@ -43,7 +45,7 @@ figma.ui.onmessage = async (msg: { type: string }) => {
 
 type Rule = { [prop: string]: string | number };
 
-async function generate(root: SceneNode): Promise<string> {
+async function generate(root: SceneNode): Promise<{ combined: string; html: string; css: string }> {
   const cssRules: string[] = [];
   const fonts = new Map<string, Set<number>>(); // family -> weights
   let counter = 0;
@@ -151,8 +153,20 @@ async function generate(root: SceneNode): Promise<string> {
   }
 
   const body = await build(root, null, 3);
+  const links = fontLink(fonts);
+  const stylesheet =
+    "* { margin: 0; padding: 0; box-sizing: border-box; }\n" +
+    "body { display: flex; justify-content: center; }\n\n" +
+    cssRules.join("\n\n");
 
-  return assembleDoc(root.name, fontLink(fonts), cssRules.join("\n\n"), body);
+  const styleBlock = `  <style>\n${stylesheet.replace(/^/gm, "    ")}\n  </style>`;
+  const linkBlock = `  <link rel="stylesheet" href="styles.css" />`;
+
+  return {
+    combined: docShell(root.name, links, styleBlock, body),
+    html: docShell(root.name, links, linkBlock, body),
+    css: stylesheet,
+  };
 }
 
 // --- node helpers ------------------------------------------------------------
@@ -424,12 +438,7 @@ function fontLink(fonts: Map<string, Set<number>>): string {
   );
 }
 
-function assembleDoc(
-  title: string,
-  links: string,
-  css: string,
-  body: string,
-): string {
+function docShell(title: string, links: string, head: string, body: string): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -437,12 +446,7 @@ function assembleDoc(
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${escapeHtml(title)}</title>
   ${links}
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { display: flex; justify-content: center; }
-
-${css.replace(/^/gm, "    ")}
-  </style>
+${head}
 </head>
 <body>
 ${body}
