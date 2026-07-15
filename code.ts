@@ -5,7 +5,7 @@
 
 figma.showUI(__html__, { width: 480, height: 660, themeColors: true });
 
-figma.ui.onmessage = async (msg: { type: string }) => {
+figma.ui.onmessage = async (msg: { type: string; semantic?: boolean }) => {
   if (msg.type !== "export") return;
 
   const sel = figma.currentPage.selection;
@@ -25,7 +25,7 @@ figma.ui.onmessage = async (msg: { type: string }) => {
   }
 
   try {
-    const out = await generate(root);
+    const out = await generate(root, { semantic: msg.semantic !== false });
     figma.ui.postMessage({
       type: "result",
       name: sanitizeFileName(root.name),
@@ -45,10 +45,17 @@ figma.ui.onmessage = async (msg: { type: string }) => {
 
 type Rule = { [prop: string]: string | number };
 
-async function generate(root: SceneNode): Promise<{ combined: string; html: string; css: string }> {
+async function generate(
+  root: SceneNode,
+  opts: { semantic: boolean },
+): Promise<{ combined: string; html: string; css: string }> {
   const cssRules: string[] = [];
   const fonts = new Map<string, Set<number>>(); // family -> weights
   let counter = 0;
+
+  // Map heading font sizes -> h1..h6. The most common size is treated as body;
+  // anything larger becomes a heading, ranked by size. Works with no layer names.
+  const headings = opts.semantic ? headingMap(root) : new Map<number, string>();
 
   const className = (node: SceneNode): string => {
     const base =
@@ -76,6 +83,7 @@ async function generate(root: SceneNode): Promise<{ combined: string; html: stri
     node: SceneNode,
     parent: SceneNode | null,
     depth: number,
+    parentTag: string,
   ): Promise<string> {
     if ("visible" in node && node.visible === false) return "";
 
@@ -83,6 +91,8 @@ async function generate(root: SceneNode): Promise<{ combined: string; html: stri
     const indent = "  ".repeat(depth);
     const rule: Rule = {};
     const absolute = parent !== null && !isAutoLayout(parent);
+    // Direct children of a list become list items.
+    const inList = parentTag === "ul" || parentTag === "ol";
 
     positionAndSize(node, parent, absolute, rule);
     if (
@@ -128,17 +138,25 @@ async function generate(root: SceneNode): Promise<{ combined: string; html: stri
       applyTextStyle(node, rule, addFont);
       pushRule(cls, rule);
       const text = escapeHtml(node.characters).replace(/\n/g, "<br>");
-      return `${indent}<p class="${cls}">${text}</p>`;
+      const tag = inList ? "li" : opts.semantic ? textTag(node, headings) : "p";
+      if (tag === "a") {
+        const link = node.hyperlink;
+        const href =
+          link && typeof link === "object" ? escapeHtml(link.value) : "#";
+        return `${indent}<a class="${cls}" href="${href}">${text}</a>`;
+      }
+      return `${indent}<${tag} class="${cls}">${text}</${tag}>`;
     }
 
     // Containers and shapes.
     applyBoxDecoration(node, rule);
     applyLayout(node, rule);
 
+    const tag = inList ? "li" : opts.semantic ? containerTag(node) : "div";
     const kids = "children" in node ? node.children.slice() : [];
     if (kids.length === 0) {
       pushRule(cls, rule);
-      return `${indent}<div class="${cls}"></div>`;
+      return `${indent}<${tag} class="${cls}"></${tag}>`;
     }
 
     if (!isAutoLayout(node) && !rule.position) rule.position = "relative";
@@ -146,13 +164,13 @@ async function generate(root: SceneNode): Promise<{ combined: string; html: stri
 
     const childHtml: string[] = [];
     for (const child of kids) {
-      const h = await build(child, node, depth + 1);
+      const h = await build(child, node, depth + 1, tag);
       if (h) childHtml.push(h);
     }
-    return `${indent}<div class="${cls}">\n${childHtml.join("\n")}\n${indent}</div>`;
+    return `${indent}<${tag} class="${cls}">\n${childHtml.join("\n")}\n${indent}</${tag}>`;
   }
 
-  const body = await build(root, null, 3);
+  const body = await build(root, null, 3, "");
   const links = fontLink(fonts);
   const stylesheet =
     "* { margin: 0; padding: 0; box-sizing: border-box; }\n" +
@@ -185,6 +203,108 @@ const hasImageFill = (n: SceneNode): boolean =>
   "fills" in n &&
   Array.isArray(n.fills) &&
   n.fills.some((f) => f.visible !== false && f.type === "IMAGE");
+
+// --- semantic tag resolution -------------------------------------------------
+// All heuristics are offline and conservative: a node only leaves <div>/<p> when
+// a signal is strong, otherwise it keeps the neutral default (never a regression).
+
+// The most common text size is treated as body; larger sizes become headings,
+// ranked biggest -> h1. This works even when no layer is named.
+function headingMap(root: SceneNode): Map<number, string> {
+  const sizes: number[] = [];
+  const walk = (n: SceneNode) => {
+    if ("visible" in n && n.visible === false) return;
+    if (n.type === "TEXT" && typeof n.fontSize === "number") {
+      sizes.push(Math.round(n.fontSize));
+    }
+    if ("children" in n) n.children.forEach(walk);
+  };
+  walk(root);
+
+  const map = new Map<number, string>();
+  if (sizes.length === 0) return map;
+
+  const freq = new Map<number, number>();
+  sizes.forEach((s) => freq.set(s, (freq.get(s) || 0) + 1));
+  let body = sizes[0];
+  let best = -1;
+  freq.forEach((count, size) => {
+    if (count > best || (count === best && size < body)) {
+      best = count;
+      body = size;
+    }
+  });
+
+  Array.from(new Set(sizes))
+    .filter((s) => s > body)
+    .sort((a, b) => b - a)
+    .forEach((s, i) => map.set(s, "h" + Math.min(i + 1, 6)));
+  return map;
+}
+
+function textTag(node: TextNode, headings: Map<number, string>): string {
+  const link = node.hyperlink;
+  if (link && typeof link === "object" && link.type === "URL") return "a";
+  if (typeof node.fontSize === "number") {
+    const h = headings.get(Math.round(node.fontSize));
+    if (h) return h;
+  }
+  return "p";
+}
+
+const NAME_TAGS: [RegExp, string][] = [
+  [/\b(nav|navbar|navigation)\b/, "nav"],
+  [/\b(header|hero|masthead)\b/, "header"],
+  [/\bfooter\b/, "footer"],
+  [/\b(aside|sidebar)\b/, "aside"],
+  [/\b(article|blog\s*post)\b/, "article"],
+  [/\bsection\b/, "section"],
+  [/\bmain\b/, "main"],
+  [/\b(list|menu)\b/, "ul"],
+  [/\b(button|btn|cta)\b/, "button"],
+];
+
+function containerTag(node: SceneNode): string {
+  const name = (node.name || "").toLowerCase();
+  for (const [re, tag] of NAME_TAGS) if (re.test(name)) return tag;
+  if (looksLikeButton(node)) return "button";
+  return "div";
+}
+
+// A framed box with a fill, rounded corners, and exactly one short text child
+// reads as a button even with no name to go on.
+function looksLikeButton(node: SceneNode): boolean {
+  if (
+    node.type !== "FRAME" &&
+    node.type !== "INSTANCE" &&
+    node.type !== "COMPONENT"
+  ) {
+    return false;
+  }
+  if (!("fills" in node) || !Array.isArray(node.fills) || node.fills.length === 0) {
+    return false;
+  }
+  const radius =
+    "cornerRadius" in node && typeof node.cornerRadius === "number"
+      ? node.cornerRadius
+      : 0;
+  if (radius <= 0) return false;
+
+  const texts = textNodesIn(node);
+  if (texts.length !== 1) return false;
+  const chars = texts[0].characters;
+  return chars.length > 0 && chars.length <= 25 && !chars.includes("\n");
+}
+
+function textNodesIn(node: SceneNode): TextNode[] {
+  const out: TextNode[] = [];
+  const walk = (n: SceneNode) => {
+    if (n.type === "TEXT") out.push(n);
+    else if ("children" in n) n.children.forEach(walk);
+  };
+  if ("children" in node) node.children.forEach(walk);
+  return out;
+}
 
 function positionAndSize(
   node: SceneNode,
