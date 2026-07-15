@@ -197,22 +197,26 @@ async function generate(
     applyBoxDecoration(node, rule);
     applyLayout(node, rule);
 
+    // The page root must not clip: a fixed-width overflow:hidden root would trap
+    // every full-width section inside the design column and cancel the bleed.
+    if (parent === null) delete rule.overflow;
+
     // Any section that spans the page paints its background across the full
     // viewport (content stays in the centred column) so it reaches both screen
     // edges instead of leaving gutters. Works at any nesting depth, since the
     // design is centred, so a full-width band is always centred in the viewport.
-    // Skipped for the root, and for bands that clip, are bordered, or don't
-    // span the width (e.g. left-aligned blocks).
+    // Skipped for the root, and for bordered bands or narrower left-aligned
+    // blocks. A qualifying band drops its own clip so the bleed can escape it.
     if (
       parent !== null &&
       rule.background &&
-      !rule.overflow &&
       "width" in node &&
       node.width >= pageW * 0.98 &&
       !Object.keys(rule).some((k) => k.startsWith("border"))
     ) {
       const bg = rule.background;
       delete rule.background;
+      delete rule.overflow;
       rule.position = "relative";
       rule["z-index"] = "0";
       cssRules.push(
