@@ -197,12 +197,14 @@ async function generate(
     applyBoxDecoration(node, rule);
     applyLayout(node, rule);
 
-    // A top-level section that spans the page paints its background across the
-    // full viewport (content stays in the centred column) so it reaches both
-    // screen edges instead of leaving white gutters. Skipped for bands that
-    // clip, are bordered, or don't span the width (e.g. left-aligned blocks).
+    // Any section that spans the page paints its background across the full
+    // viewport (content stays in the centred column) so it reaches both screen
+    // edges instead of leaving gutters. Works at any nesting depth, since the
+    // design is centred, so a full-width band is always centred in the viewport.
+    // Skipped for the root, and for bands that clip, are bordered, or don't
+    // span the width (e.g. left-aligned blocks).
     if (
-      topBand &&
+      parent !== null &&
       rule.background &&
       !rule.overflow &&
       "width" in node &&
