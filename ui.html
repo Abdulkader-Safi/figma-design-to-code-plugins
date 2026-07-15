@@ -137,6 +137,9 @@
   }
   .status.error { color: var(--clay); }
 
+  .seg { display: flex; gap: 6px; margin-bottom: 14px; }
+  .seg-label { display: block; font-size: 12px; color: var(--text); margin-bottom: 6px; }
+  .seg-label .hint { color: var(--muted); }
   .tabs { display: none; gap: 6px; margin-bottom: 8px; }
   .tab {
     font-family: var(--mono);
@@ -218,6 +221,12 @@
   <span class="toggle-text">Semantic tags<span class="hint">nav, header, headings, buttons where clear</span></span>
 </label>
 
+<span class="seg-label">Styling <span class="hint">plain CSS, or Tailwind utility classes on a v4 CDN</span></span>
+<div class="seg" id="framework">
+  <button class="tab active" data-fw="css">CSS</button>
+  <button class="tab" data-fw="tailwind">Tailwind</button>
+</div>
+
 <button id="export" class="cta">Export selected frame</button>
 
 <div id="status" class="status"></div>
@@ -242,7 +251,7 @@
 
 <script>
   const $ = (id) => document.getElementById(id);
-  const state = { name: "export", combined: "", html: "", css: "", mode: "combined" };
+  const state = { name: "export", combined: "", html: "", css: "", mode: "combined", framework: "css" };
 
   const raw = () => state[state.mode];
   const ext = () => (state.mode === "css" ? "css" : "html");
@@ -313,19 +322,34 @@
 
   // --- render + actions ---
   function render() {
-    document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t.dataset.mode === state.mode));
+    document.querySelectorAll("#tabs .tab").forEach((t) => t.classList.toggle("active", t.dataset.mode === state.mode));
     $("output").innerHTML = state.mode === "css" ? hlCSS(raw()) : hlHTML(raw());
     $("output").scrollTop = 0;
     $("download").textContent = "Download ." + ext();
   }
 
-  document.querySelectorAll(".tab").forEach((t) => {
+  document.querySelectorAll("#tabs .tab").forEach((t) => {
     t.onclick = () => { state.mode = t.dataset.mode; render(); };
+  });
+
+  // Framework selector. Tailwind is a single self-contained file, so the
+  // HTML/CSS split tabs do not apply and the stale output is cleared on switch.
+  document.querySelectorAll("#framework .tab").forEach((t) => {
+    t.onclick = () => {
+      if (t.dataset.fw === state.framework) return;
+      state.framework = t.dataset.fw;
+      document.querySelectorAll("#framework .tab").forEach((b) => b.classList.toggle("active", b.dataset.fw === state.framework));
+      state.mode = "combined";
+      show(false);
+      setStatus(state.framework === "tailwind"
+        ? "Tailwind selected. Export to generate utility classes."
+        : "Plain CSS selected. Export to generate.");
+    };
   });
 
   $("export").onclick = () => {
     setStatus("Generating…");
-    parent.postMessage({ pluginMessage: { type: "export", semantic: $("semantic").checked } }, "*");
+    parent.postMessage({ pluginMessage: { type: "export", semantic: $("semantic").checked, tailwind: state.framework === "tailwind" } }, "*");
   };
 
   $("copy").onclick = () => {
@@ -367,8 +391,8 @@
   };
 
   function show(on) {
-    const d = on ? "" : "none";
-    $("tabs").style.display = on ? "flex" : "none";
+    // The HTML/CSS split only applies to CSS mode; Tailwind is one combined file.
+    $("tabs").style.display = on && state.framework === "css" ? "flex" : "none";
     $("output").style.display = on ? "block" : "none";
     $("actions").style.display = on ? "flex" : "none";
   }
