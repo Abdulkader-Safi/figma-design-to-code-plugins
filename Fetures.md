@@ -46,7 +46,7 @@ Each new framework is mostly a new renderer over the same node walk, so the inte
 - [ ] **Download as a zip.** Bundle `index.html`, `styles.css`, and an `assets/` folder with real image files instead of inline base64, which keeps the HTML small.
 - [ ] **Image handling options.** Background-image for image fills on containers, and a choice between inline base64 and exported asset files.
 - [ ] **Accessibility passes.** Alt text from layer names, real heading levels, and basic aria where the node type implies it.
-- [ ] **Mixed text styles.** Support multiple styles inside one text node by emitting `span`s, plus text truncation and decoration color.
+- [x] **Mixed text styles.** Support multiple styles inside one text node by emitting `span`s, plus text truncation and decoration color.
 - [ ] **Theme modes.** If Figma Variables have light and dark modes, emit both as CSS variable sets.
 - [ ] **Send to CodePen or CodeSandbox.** A share button for quick handoff.
 
