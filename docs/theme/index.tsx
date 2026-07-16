@@ -8,37 +8,23 @@ export * from '@rspress/core/theme-original';
 
 function SiteFooter() {
   return (
-    <footer
-      style={{
-        borderTop: '1px solid var(--rp-c-divider-light)',
-        padding: '28px 24px',
-        display: 'flex',
-        flexWrap: 'wrap',
-        gap: '12px 20px',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        fontFamily: 'var(--rp-font-family-mono)',
-        fontSize: '0.78rem',
-        letterSpacing: '0.04em',
-        color: 'var(--rp-c-text-2)',
-      }}
-    >
+    <footer className="site-footer">
       <span>
         Developed by{' '}
         <a
+          className="site-footer__name"
           href="https://abdulkadersafi.com"
           target="_blank"
           rel="noreferrer"
-          style={{ color: 'var(--rp-c-text-1)' }}
         >
           Abdulkader Safi
         </a>
       </span>
       <a
+        className="site-footer__kofi"
         href="https://ko-fi.com/abdulkadersafi"
         target="_blank"
         rel="noreferrer"
-        style={{ color: 'var(--rp-c-brand)' }}
       >
         Buy me a coffee →
       </a>

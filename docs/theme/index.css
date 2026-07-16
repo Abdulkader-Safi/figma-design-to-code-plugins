@@ -140,3 +140,43 @@
 .rspress-home-feature-card:hover {
   border-color: var(--rp-c-brand);
 }
+
+/* Site footer: the two items line up with the nav, start and end, by using the
+   same horizontal gutter the nav computes. */
+.site-footer {
+  border-top: 1px solid var(--rp-c-divider-light);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 28px 20px;
+  font-family: var(--rp-font-family-mono);
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  color: var(--rp-c-text-2);
+}
+
+@media (min-width: 1280px) {
+  .site-footer {
+    --site-footer-gutter: max(
+      calc(
+        (
+            100vw - var(--rp-content-max-width) - var(--rp-sidebar-width) -
+              var(--rp-outline-width)
+          ) / 2
+      ),
+      20px
+    );
+    padding-left: var(--site-footer-gutter);
+    padding-right: var(--site-footer-gutter);
+  }
+}
+
+.site-footer__name {
+  color: var(--rp-c-text-1);
+}
+
+.site-footer__kofi {
+  color: var(--rp-c-brand);
+}
