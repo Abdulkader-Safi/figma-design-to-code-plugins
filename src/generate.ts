@@ -4,12 +4,17 @@
 
 import type { Rule } from "./types";
 import { solidFill, linearGradient, escapeHtml, round } from "./values";
-import { isAutoLayout, isVectorLike, isIconContainer, hasImageFill } from "./nodes";
+import {
+  isAutoLayout,
+  isVectorLike,
+  isIconContainer,
+  hasImageFill,
+} from "./nodes";
 import { headingMap, textTag, containerTag } from "./semantic";
 import { positionAndSize, applyLayout } from "./layout";
 import { applyBoxDecoration } from "./decoration";
 import { styleRule, ALIGN } from "./text";
-import { toTailwind } from "./tailwind";
+import { toTailwind, fontSlug } from "./tailwind";
 import { fontLink, docShell } from "./document";
 
 export async function generate(
@@ -244,17 +249,25 @@ export async function generate(
   // CSS left is the body centring and the full-bleed ::before rules, which have
   // no clean utility form.
   if (opts.tailwind) {
-    // Tailwind's Preflight sets a base line-height (1.5) that the plain-CSS
-    // reset never had. That loosens every text node with an AUTO (unset)
-    // Figma line-height and drifts from the design. Reset it to normal. It MUST
-    // sit in @layer base: an unlayered rule would beat the layered leading-[…]
-    // utilities (unlayered wins over any layer) and crush every explicit
-    // line-height too. In @layer base, the utilities layer still overrides it,
-    // so only AUTO nodes fall back to normal, matching the plain-CSS export.
-    const reset = "@layer base { * { line-height: normal; } }";
-    const extra = [reset, bodyRule, ...cssRules].join("\n\n");
+    // Fonts become a @theme block so text nodes can use idiomatic font-*
+    // utilities (font-inter, font-space-grotesk) instead of an arbitrary
+    // [font-family:…]. The v4 browser CDN reads config from a
+    // <style type="text/tailwindcss"> block.
+    const themeVars = Array.from(fonts.keys())
+      .map((fam) => `    --font-${fontSlug(fam)}: '${fam}', sans-serif;`)
+      .join("\n");
+    const theme = fonts.size ? `  @theme {\n${themeVars}\n  }\n` : "";
+    // Tailwind's Preflight sets a base line-height (1.5) the plain-CSS reset
+    // never had, which loosens every AUTO (unset) line-height and drifts from
+    // the design. Reset to normal in @layer base so the utilities layer's
+    // explicit leading-[…] still wins; only AUTO nodes fall back to normal.
+    const twConfig = `${theme}  @layer base { * { line-height: normal; } }`;
+    // bodyRule and the full-bleed ::before rules are plain CSS with no utility
+    // form; they stay in a normal <style>.
+    const extra = [bodyRule, ...cssRules].join("\n\n");
     const head =
       `  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>\n` +
+      `  <style type="text/tailwindcss">\n${twConfig}\n  </style>\n` +
       `  <style>\n${extra.replace(/^/gm, "    ")}\n  </style>`;
     const doc = docShell(root.name, links, head, body);
     return { combined: doc, html: doc, css: "" };
