@@ -246,10 +246,12 @@ export async function generate(
   if (opts.tailwind) {
     // Tailwind's Preflight sets a base line-height (1.5) that the plain-CSS
     // reset never had. That loosens every text node with an AUTO (unset)
-    // Figma line-height and drifts from the design. Reset it to normal, as a
-    // bare `*` rule so any node with an explicit line-height (emitted as
-    // leading-[…], a class) still wins, matching the plain-CSS export.
-    const reset = "* { line-height: normal; }";
+    // Figma line-height and drifts from the design. Reset it to normal. It MUST
+    // sit in @layer base: an unlayered rule would beat the layered leading-[…]
+    // utilities (unlayered wins over any layer) and crush every explicit
+    // line-height too. In @layer base, the utilities layer still overrides it,
+    // so only AUTO nodes fall back to normal, matching the plain-CSS export.
+    const reset = "@layer base { * { line-height: normal; } }";
     const extra = [reset, bodyRule, ...cssRules].join("\n\n");
     const head =
       `  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>\n` +
