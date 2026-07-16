@@ -24,7 +24,9 @@ export function docShell(
   links: string,
   head: string,
   body: string,
+  bodyClass = "",
 ): string {
+  const bodyTag = bodyClass ? `<body class="${bodyClass}">` : "<body>";
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -34,7 +36,7 @@ export function docShell(
   ${links}
 ${head}
 </head>
-<body>
+${bodyTag}
 ${body}
 </body>
 </html>`;

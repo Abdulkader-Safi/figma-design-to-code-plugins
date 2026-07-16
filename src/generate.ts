@@ -17,6 +17,21 @@ import { styleRule, ALIGN } from "./text";
 import { toTailwind, fontSlug } from "./tailwind";
 import { fontLink, docShell } from "./document";
 
+// A background value -> a Tailwind bg-[…] utility (a hex, or an arbitrary image
+// like a gradient with spaces underscored).
+function bgUtil(bg: string): string {
+  return bg.startsWith("#") ? `bg-[${bg}]` : `bg-[${bg.replace(/\s+/g, "_")}]`;
+}
+
+// The full-viewport bleed as Tailwind before:* utilities (its pseudo-element
+// variant) — the idiomatic form of the ::before bleed rule used in CSS mode.
+function bleedBefore(bg: string): string {
+  return (
+    "before:content-[''] before:absolute before:z-[-1] before:inset-y-0 " +
+    `before:left-1/2 before:w-screen before:-ml-[50vw] before:${bgUtil(bg)}`
+  );
+}
+
 export async function generate(
   root: SceneNode,
   opts: { semantic: boolean; tailwind: boolean },
@@ -85,7 +100,8 @@ export async function generate(
     const cls = className(node);
     const indent = "  ".repeat(depth);
     const rule: Rule = {};
-    let hasBefore = false; // set when this node gets a full-bleed ::before rule
+    let hasBefore = false; // CSS mode: this node gets a full-bleed ::before rule
+    let beforeUtils = ""; // Tailwind mode: the same bleed as before:* utilities
     const absolute = parent !== null && !isAutoLayout(parent);
     // Direct children of a list become list items.
     const inList = parentTag === "ul" || parentTag === "ol";
@@ -197,26 +213,35 @@ export async function generate(
       node.width >= pageW * 0.98 &&
       !Object.keys(rule).some((k) => k.startsWith("border"))
     ) {
-      const bg = rule.background;
+      const bg = String(rule.background);
       delete rule.background;
       delete rule.overflow;
       rule.position = "relative";
       rule["z-index"] = "0";
-      hasBefore = true;
-      cssRules.push(
-        `.${cls}::before {\n` +
-          `  content: "";\n` +
-          `  position: absolute;\n` +
-          `  z-index: -1;\n` +
-          `  top: 0;\n` +
-          `  bottom: 0;\n` +
-          `  left: 50%;\n` +
-          `  width: 100vw;\n` +
-          `  margin-left: -50vw;\n` +
-          `  background: ${bg};\n` +
-          `}`,
-      );
+      if (opts.tailwind) {
+        beforeUtils = bleedBefore(bg);
+      } else {
+        hasBefore = true;
+        cssRules.push(
+          `.${cls}::before {\n` +
+            `  content: "";\n` +
+            `  position: absolute;\n` +
+            `  z-index: -1;\n` +
+            `  top: 0;\n` +
+            `  bottom: 0;\n` +
+            `  left: 50%;\n` +
+            `  width: 100vw;\n` +
+            `  margin-left: -50vw;\n` +
+            `  background: ${bg};\n` +
+            `}`,
+        );
+      }
     }
+
+    // Class attribute for this container: the utility/class output plus, in
+    // Tailwind mode, the before:* bleed utilities.
+    const withBleed = (base: string) =>
+      beforeUtils ? `${base} ${beforeUtils}` : base;
 
     const tag = inList
       ? "li"
@@ -225,11 +250,11 @@ export async function generate(
         : "div";
     const kids = "children" in node ? node.children.slice() : [];
     if (kids.length === 0) {
-      return `${indent}<${tag} class="${emitClass(cls, rule, hasBefore)}"></${tag}>`;
+      return `${indent}<${tag} class="${withBleed(emitClass(cls, rule, hasBefore))}"></${tag}>`;
     }
 
     if (!isAutoLayout(node) && !rule.position) rule.position = "relative";
-    const c = emitClass(cls, rule, hasBefore);
+    const c = withBleed(emitClass(cls, rule, hasBefore));
 
     const childInteractive = interactive || tag === "a" || tag === "button";
     const childHtml: string[] = [];
@@ -242,12 +267,10 @@ export async function generate(
 
   const body = await build(root, null, 3, "", false);
   const links = fontLink(fonts);
-  const bodyRule = `body { display: flex; justify-content: center;${pageBg ? ` background: ${pageBg};` : ""} }`;
 
-  // Tailwind mode: utilities live on the elements and the v4 browser CDN builds
-  // the stylesheet at runtime (its preflight covers the resets). The only static
-  // CSS left is the body centring and the full-bleed ::before rules, which have
-  // no clean utility form.
+  // Tailwind mode: every style is a utility. The v4 browser CDN builds the
+  // stylesheet at runtime (its preflight covers the resets). The only non-utility
+  // CSS is the @theme fonts and the line-height reset, both Tailwind config.
   if (opts.tailwind) {
     // Fonts become a @theme block so text nodes can use idiomatic font-*
     // utilities (font-inter, font-space-grotesk) instead of an arbitrary
@@ -262,16 +285,15 @@ export async function generate(
     // the design. Reset to normal in @layer base so the utilities layer's
     // explicit leading-[…] still wins; only AUTO nodes fall back to normal.
     const twConfig = `${theme}  @layer base { * { line-height: normal; } }`;
-    // bodyRule and the full-bleed ::before rules are plain CSS with no utility
-    // form; they stay in a normal <style>.
-    const extra = [bodyRule, ...cssRules].join("\n\n");
+    const bodyClass = `flex justify-center${pageBg ? ` ${bgUtil(pageBg)}` : ""}`;
     const head =
       `  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>\n` +
-      `  <style type="text/tailwindcss">\n${twConfig}\n  </style>\n` +
-      `  <style>\n${extra.replace(/^/gm, "    ")}\n  </style>`;
-    const doc = docShell(root.name, links, head, body);
+      `  <style type="text/tailwindcss">\n${twConfig}\n  </style>`;
+    const doc = docShell(root.name, links, head, body, bodyClass);
     return { combined: doc, html: doc, css: "" };
   }
+
+  const bodyRule = `body { display: flex; justify-content: center;${pageBg ? ` background: ${pageBg};` : ""} }`;
 
   const stylesheet =
     "* { margin: 0; padding: 0; box-sizing: border-box; }\n" +
