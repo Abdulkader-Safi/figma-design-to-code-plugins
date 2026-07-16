@@ -2,7 +2,7 @@
 // and clipping.
 
 import type { Rule } from "./types";
-import { solidFill, linearGradient, rgba } from "./values";
+import { solidFill, gradientFill, rgba } from "./values";
 
 export function applyBoxDecoration(node: SceneNode, rule: Rule) {
   // Clip children to rounded corners for any frame Figma clips, auto-layout or
@@ -11,7 +11,7 @@ export function applyBoxDecoration(node: SceneNode, rule: Rule) {
 
   // Background.
   if ("fills" in node && Array.isArray(node.fills)) {
-    const bg = solidFill(node.fills) || linearGradient(node.fills);
+    const bg = solidFill(node.fills) || gradientFill(node.fills);
     if (bg) rule.background = bg;
   }
 

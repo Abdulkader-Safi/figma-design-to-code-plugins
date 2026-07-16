@@ -27,6 +27,6 @@ module.exports = tseslint.config(
     },
   },
   {
-    ignores: ["code.js", "dist", "eslint.config.js", "scripts"],
+    ignores: ["code.js", "dist", "eslint.config.js", "scripts", "test"],
   },
 );
