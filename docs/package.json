@@ -11,7 +11,7 @@
     "lint": "eslint .",
     "preview": "rspress preview",
     "setup": "bun run build ; pm2 reload design-to-html",
-    "rsync:prod": "rspress build && rsync -azP --delete $(pwd)/doc_build/ safi:/var/www/design-to-html.abdulkadersafi.com"
+    "rsync:prod": "rspress build && rsync -azP --delete ./doc_build/ safi:/var/www/design-to-html.abdulkadersafi.com"
   },
   "dependencies": {
     "@rspress/core": "^2.0.16"
