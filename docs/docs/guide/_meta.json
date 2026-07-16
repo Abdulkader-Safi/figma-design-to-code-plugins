@@ -1,0 +1,21 @@
+[
+  {
+    "type": "section-header",
+    "label": "Start here"
+  },
+  "introduction",
+  "getting-started",
+  {
+    "type": "section-header",
+    "label": "Design for a clean export"
+  },
+  "naming-layers",
+  "auto-layout",
+  "headings-and-text",
+  {
+    "type": "section-header",
+    "label": "Export"
+  },
+  "css-vs-tailwind",
+  "exporting"
+]

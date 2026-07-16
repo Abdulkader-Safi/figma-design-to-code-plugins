@@ -1,0 +1,182 @@
+/* Design to HTML docs theme.
+   Editorial workbench: warm near-black canvas, oversized Space Grotesk
+   headlines, one clay-orange accent, hairline borders instead of shadows. */
+
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap');
+
+/* Light (used only when the reader switches to it). */
+:root {
+  --rp-c-brand: #c75c33;
+  --rp-c-brand-light: #d97a4f;
+  --rp-c-brand-lighter: #e3a077;
+  --rp-c-brand-dark: #a8461f;
+  --rp-c-brand-darker: #8a3817;
+  --rp-c-brand-tint: rgba(199, 92, 51, 0.08);
+
+  --rp-c-bg: #f4f1ea;
+  --rp-c-bg-soft: #fbf9f3;
+  --rp-c-bg-mute: #ece7dc;
+  --rp-c-bg-alt: #fbf9f3;
+
+  --rp-c-text-1: #1a1611;
+  --rp-c-text-2: #6b6358;
+  --rp-c-text-3: rgba(26, 22, 17, 0.4);
+  --rp-c-text-4: rgba(26, 22, 17, 0.2);
+
+  --rp-c-divider: rgba(26, 22, 17, 0.22);
+  --rp-c-divider-light: rgba(26, 22, 17, 0.14);
+
+  --rp-c-text-code: #a8461f;
+  --rp-c-text-code-bg: rgba(199, 92, 51, 0.08);
+
+  --rp-home-hero-secondary-color: #c75c33;
+
+  /* Retire the default purple/blue hero glow. A single warm wash from the top,
+     one hue, on the brand canvas. */
+  --rp-home-background-bg:
+    radial-gradient(60% 42% at 50% 0%, rgba(199, 92, 51, 0.07), transparent 70%),
+    #f4f1ea;
+  --rp-home-feature-bg: var(--rp-c-bg-soft);
+
+  --rp-font-family-base:
+    'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --rp-font-family-mono:
+    'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* Depth from tone and hairlines, not fat drop shadows. */
+  --rp-shadow-1: 0 1px 0 rgba(26, 22, 17, 0.06);
+  --rp-shadow-2: 0 1px 0 rgba(26, 22, 17, 0.08);
+  --rp-shadow-3: 0 2px 8px rgba(26, 22, 17, 0.08);
+  --rp-shadow-4: 0 4px 16px rgba(26, 22, 17, 0.1);
+  --rp-shadow-5: 0 8px 28px rgba(26, 22, 17, 0.12);
+}
+
+/* Dark: the default look. */
+.dark {
+  --rp-c-brand: #d97a4f;
+  --rp-c-brand-light: #e3956f;
+  --rp-c-brand-lighter: #edb191;
+  --rp-c-brand-dark: #c75c33;
+  --rp-c-brand-darker: #a8461f;
+  --rp-c-brand-tint: rgba(217, 122, 79, 0.12);
+
+  --rp-c-bg: #0c0b0a;
+  --rp-c-bg-soft: #16140f;
+  --rp-c-bg-mute: #1c1a14;
+  --rp-c-bg-alt: #080807;
+
+  --rp-c-text-1: #f5f2ea;
+  --rp-c-text-2: #8d887e;
+  --rp-c-text-3: rgba(245, 242, 234, 0.4);
+  --rp-c-text-4: rgba(245, 242, 234, 0.2);
+
+  --rp-c-divider: rgba(245, 242, 234, 0.22);
+  --rp-c-divider-light: rgba(245, 242, 234, 0.12);
+
+  --rp-c-text-code: #e3956f;
+  --rp-c-text-code-bg: rgba(217, 122, 79, 0.1);
+
+  --rp-home-hero-secondary-color: #d97a4f;
+
+  --rp-home-background-bg:
+    radial-gradient(60% 42% at 50% 0%, rgba(217, 122, 79, 0.09), transparent 70%),
+    #0c0b0a;
+  --rp-home-feature-bg: var(--rp-c-bg-soft);
+
+  --rp-shadow-1: 0 1px 0 rgba(0, 0, 0, 0.4);
+  --rp-shadow-2: 0 1px 0 rgba(0, 0, 0, 0.5);
+  --rp-shadow-3: 0 2px 10px rgba(0, 0, 0, 0.4);
+  --rp-shadow-4: 0 4px 18px rgba(0, 0, 0, 0.45);
+  --rp-shadow-5: 0 8px 30px rgba(0, 0, 0, 0.5);
+}
+
+/* Display type: Space Grotesk, tight leading, a touch of negative tracking. */
+.rspress-doc :is(h1, h2, h3, h4),
+.rspress-home-hero h1,
+.rspress-home-hero-name,
+.rspress-home-hero-text,
+.rspress-home-feature h2 {
+  font-family: 'Space Grotesk', var(--rp-font-family-base);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.08;
+}
+
+.rspress-doc h1 {
+  font-size: 2.6rem;
+}
+
+/* The clay hero line, one accent, no purple gradient. */
+.rspress-home-hero-name {
+  color: var(--rp-c-brand);
+  background: none;
+  -webkit-text-fill-color: currentColor;
+}
+
+/* Mono for the eyebrow-style small labels: sidebar section headers and the
+   right-hand outline title read as clay uppercase meta. */
+.rspress-sidebar-section-header,
+.rspress-outline .outline-title {
+  font-family: var(--rp-font-family-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-size: 0.72rem;
+  color: var(--rp-c-brand);
+}
+
+/* Nav sits on a hairline, no heavy shadow. */
+.rspress-nav {
+  border-bottom: 1px solid var(--rp-c-divider-light);
+  box-shadow: none;
+}
+
+/* Feature cards on the home page: hairline border, flat surface. */
+.rspress-home-feature-card {
+  border: 1px solid var(--rp-c-divider-light);
+  box-shadow: none;
+  background: var(--rp-c-bg-soft);
+}
+
+.rspress-home-feature-card:hover {
+  border-color: var(--rp-c-brand);
+}
+
+/* Site footer: the two items line up with the nav, start and end, by using the
+   same horizontal gutter the nav computes. */
+.site-footer {
+  border-top: 1px solid var(--rp-c-divider-light);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 28px 20px;
+  font-family: var(--rp-font-family-mono);
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  color: var(--rp-c-text-2);
+}
+
+@media (min-width: 1280px) {
+  .site-footer {
+    --site-footer-gutter: max(
+      calc(
+        (
+            100vw - var(--rp-content-max-width) - var(--rp-sidebar-width) -
+              var(--rp-outline-width)
+          ) / 2
+      ),
+      20px
+    );
+    padding-left: var(--site-footer-gutter);
+    padding-right: var(--site-footer-gutter);
+  }
+}
+
+.site-footer__name {
+  color: var(--rp-c-text-1);
+}
+
+.site-footer__kofi {
+  color: var(--rp-c-brand);
+}
