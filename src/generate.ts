@@ -244,7 +244,13 @@ export async function generate(
   // CSS left is the body centring and the full-bleed ::before rules, which have
   // no clean utility form.
   if (opts.tailwind) {
-    const extra = [bodyRule, ...cssRules].join("\n\n");
+    // Tailwind's Preflight sets a base line-height (1.5) that the plain-CSS
+    // reset never had. That loosens every text node with an AUTO (unset)
+    // Figma line-height and drifts from the design. Reset it to normal, as a
+    // bare `*` rule so any node with an explicit line-height (emitted as
+    // leading-[…], a class) still wins, matching the plain-CSS export.
+    const reset = "* { line-height: normal; }";
+    const extra = [reset, bodyRule, ...cssRules].join("\n\n");
     const head =
       `  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>\n` +
       `  <style>\n${extra.replace(/^/gm, "    ")}\n  </style>`;
