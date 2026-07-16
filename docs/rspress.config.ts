@@ -11,6 +11,16 @@ export default defineConfig({
   icon: '/logo.png',
   logo: '/logo.png',
   logoText: 'Design to HTML',
+  head: [
+    [
+      'script',
+      {
+        defer: '',
+        src: 'https://u.abdulkadersafi.com/script.js',
+        'data-website-id': '6fa720ef-3624-40d0-b151-dc694eead8b7',
+      },
+    ],
+  ],
   themeConfig: {
     outlineTitle: 'On this page',
     prevPageText: 'Previous',
