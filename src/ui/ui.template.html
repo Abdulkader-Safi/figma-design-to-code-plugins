@@ -1,0 +1,333 @@
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link
+    href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap"
+    rel="stylesheet"
+/>
+
+<style>
+    /* __TAILWIND_CSS__ */
+</style>
+
+<div
+    class="mb-2.5 font-mono text-[10px] font-medium uppercase tracking-[0.3em] text-clay"
+>
+    Design &rarr; HTML
+</div>
+<h1
+    class="m-0 mb-[9px] font-display text-[27px] font-bold leading-[0.95] tracking-[-0.02em]"
+>
+    Export your <em class="text-clay not-italic">frame</em>
+</h1>
+<p class="m-0 mb-4 w-full leading-[1.5] text-muted">
+    Select a frame, then export it to a self-contained HTML file with layout,
+    colors, and Google fonts.
+</p>
+
+<div class="mb-[18px] flex items-stretch justify-between gap-5">
+    <div class="flex min-w-0 flex-col gap-2.5">
+        <span
+            class="font-mono text-[10px] font-medium uppercase tracking-[0.18em] text-muted"
+            >Output</span
+        >
+        <div class="flex min-h-[34px] items-center">
+            <label
+                class="flex cursor-pointer select-none items-center gap-[9px]"
+            >
+                <input
+                    type="checkbox"
+                    id="semantic"
+                    checked
+                    class="peer sr-only"
+                />
+                <span
+                    class="relative h-4 w-4 shrink-0 rounded-[5px] border border-hairline-strong bg-surface transition-[background,border-color] duration-150 after:absolute after:left-[5px] after:top-[2px] after:h-2 after:w-1 after:rotate-45 after:border-b-2 after:border-r-2 after:border-solid after:border-[#0c0b0a] after:opacity-0 after:content-[''] peer-checked:border-clay peer-checked:bg-clay peer-checked:after:opacity-100 peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-clay"
+                ></span>
+                <span class="text-[13px] leading-[1.2] text-text"
+                    >Semantic tags</span
+                >
+            </label>
+        </div>
+    </div>
+    <div class="flex min-w-0 flex-col gap-2.5">
+        <span
+            class="font-mono text-[10px] font-medium uppercase tracking-[0.18em] text-muted"
+            >Styling</span
+        >
+        <div class="flex min-h-[34px] items-center">
+            <div class="seg" id="framework">
+                <button class="tab active" data-fw="css">CSS</button>
+                <button class="tab" data-fw="tailwind">Tailwind</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<button
+    id="export"
+    class="w-full cursor-pointer rounded-[9px] border-0 bg-clay px-4 py-3 font-semibold text-[#0c0b0a] transition-colors duration-150 hover:bg-clay-hover"
+>
+    Export selected frame
+</button>
+
+<div id="status" class="status"></div>
+
+<div class="hidden gap-1.5 mb-2" id="tabs">
+    <button class="tab active" data-mode="combined">HTML + CSS</button>
+    <button class="tab" data-mode="html">HTML</button>
+    <button class="tab" data-mode="css">CSS</button>
+</div>
+
+<pre
+    id="output"
+    class="hidden m-0 min-h-0 flex-1 overflow-auto whitespace-pre rounded-[10px] border border-hairline bg-surface px-3.5 py-3 font-mono text-[11px] leading-[1.55] text-text [tab-size:2]"
+></pre>
+
+<div id="actions" class="hidden gap-2.5 mt-2.5">
+    <button
+        id="copy"
+        class="flex-1 cursor-pointer rounded-[9px] border border-hairline bg-surface px-3.5 py-[11px] font-medium text-text transition-colors duration-150 hover:border-hairline-strong"
+    >
+        Copy
+    </button>
+    <button
+        id="download"
+        class="flex-1 cursor-pointer rounded-[9px] border border-hairline bg-surface px-3.5 py-[11px] font-medium text-text transition-colors duration-150 hover:border-hairline-strong"
+    >
+        Download .html
+    </button>
+</div>
+
+<footer
+    class="mt-3.5 flex shrink-0 items-center justify-between gap-3 border-t border-hairline pb-[15px] pt-[13px] font-mono text-[10px]"
+>
+    <a
+        class="text-muted no-underline transition-colors duration-150 hover:text-text"
+        href="https://abdulkadersafi.com"
+        target="_blank"
+        rel="noopener"
+        >Created by Abdulkader Safi</a
+    >
+    <a
+        class="font-medium text-clay no-underline hover:underline"
+        href="https://ko-fi.com/abdulkadersafi"
+        target="_blank"
+        rel="noopener"
+        >&#9829; Support on Ko-fi</a
+    >
+</footer>
+
+<script>
+    const $ = (id) => document.getElementById(id);
+    const state = {
+        name: "export",
+        combined: "",
+        html: "",
+        css: "",
+        mode: "combined",
+        framework: "css",
+    };
+
+    const raw = () => state[state.mode];
+    const ext = () => (state.mode === "css" ? "css" : "html");
+
+    // --- syntax highlighting (offline, HTML + CSS) ---
+    const esc = (s) =>
+        s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const span = (cls, inner) =>
+        '<span class="' + cls + '">' + inner + "</span>";
+
+    function hlCSS(src) {
+        const re =
+            /(\/\*[\s\S]*?\*\/)|("[^"]*"|'[^']*')|(@[\w-]+)|(\*|[.#][\w-]+|[\w-]+)(?=[^{};]*\{)|([-\w]+)(\s*:\s*)([^;{}]*)(;?)|([{}])/g;
+        let out = "",
+            last = 0,
+            m;
+        while ((m = re.exec(src))) {
+            out += esc(src.slice(last, m.index));
+            if (m[1]) out += span("c-com", esc(m[1]));
+            else if (m[2]) out += span("c-str", esc(m[2]));
+            else if (m[3]) out += span("c-tag", esc(m[3]));
+            else if (m[4]) out += span("c-tag", esc(m[4]));
+            else if (m[5] !== undefined)
+                out +=
+                    span("c-attr", esc(m[5])) +
+                    esc(m[6]) +
+                    span("c-str", esc(m[7])) +
+                    span("c-punc", esc(m[8]));
+            else if (m[9]) out += span("c-punc", esc(m[9]));
+            last = re.lastIndex;
+            if (m.index === re.lastIndex) re.lastIndex++;
+        }
+        return out + esc(src.slice(last));
+    }
+
+    function hlTag(tag) {
+        let first = true;
+        return tag.replace(
+            /(<\/?|\/?>|!DOCTYPE)|("[^"]*"|'[^']*')|(=)|([A-Za-z][\w:-]*)|(\s+)/g,
+            (m, punc, str, eq, name, sp) => {
+                if (punc) return span("c-punc", esc(punc));
+                if (str) return span("c-str", esc(str));
+                if (eq) return esc(eq);
+                if (sp) return sp;
+                if (name) {
+                    if (first) {
+                        first = false;
+                        return span("c-tag", esc(name));
+                    }
+                    return span("c-attr", esc(name));
+                }
+                return esc(m);
+            },
+        );
+    }
+
+    function hlMarkup(src) {
+        const toks = src.match(/<!--[\s\S]*?-->|<[^>]*>|[^<]+/g) || [];
+        let out = "";
+        for (const t of toks) {
+            if (t.slice(0, 4) === "<!--") out += span("c-com", esc(t));
+            else if (t[0] === "<") out += hlTag(t);
+            else out += esc(t);
+        }
+        return out;
+    }
+
+    function hlHTML(src) {
+        const parts = src.split(/(<style[^>]*>|<\/style>)/i);
+        let out = "",
+            inStyle = false;
+        for (const p of parts) {
+            if (!p) continue;
+            if (/^<style/i.test(p)) {
+                out += hlTag(p);
+                inStyle = true;
+            } else if (/^<\/style>/i.test(p)) {
+                out += hlTag(p);
+                inStyle = false;
+            } else out += inStyle ? hlCSS(p) : hlMarkup(p);
+        }
+        return out;
+    }
+
+    // --- render + actions ---
+    function render() {
+        document
+            .querySelectorAll("#tabs .tab")
+            .forEach((t) =>
+                t.classList.toggle("active", t.dataset.mode === state.mode),
+            );
+        $("output").innerHTML =
+            state.mode === "css" ? hlCSS(raw()) : hlHTML(raw());
+        $("output").scrollTop = 0;
+        $("download").textContent = "Download ." + ext();
+    }
+
+    document.querySelectorAll("#tabs .tab").forEach((t) => {
+        t.onclick = () => {
+            state.mode = t.dataset.mode;
+            render();
+        };
+    });
+
+    // Framework selector. Tailwind is a single self-contained file, so the
+    // HTML/CSS split tabs do not apply and the stale output is cleared on switch.
+    document.querySelectorAll("#framework .tab").forEach((t) => {
+        t.onclick = () => {
+            if (t.dataset.fw === state.framework) return;
+            state.framework = t.dataset.fw;
+            document
+                .querySelectorAll("#framework .tab")
+                .forEach((b) =>
+                    b.classList.toggle(
+                        "active",
+                        b.dataset.fw === state.framework,
+                    ),
+                );
+            state.mode = "combined";
+            show(false);
+            setStatus(
+                state.framework === "tailwind"
+                    ? "Tailwind selected. Export to generate utility classes."
+                    : "Plain CSS selected. Export to generate.",
+            );
+        };
+    });
+
+    $("export").onclick = () => {
+        setStatus("Generating…");
+        parent.postMessage(
+            {
+                pluginMessage: {
+                    type: "export",
+                    semantic: $("semantic").checked,
+                    tailwind: state.framework === "tailwind",
+                },
+            },
+            "*",
+        );
+    };
+
+    $("copy").onclick = () => {
+        const ta = document.createElement("textarea");
+        ta.value = raw();
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        ta.remove();
+        const what =
+            state.mode === "css"
+                ? "CSS"
+                : state.mode === "html"
+                  ? "HTML"
+                  : "HTML and CSS";
+        setStatus("Copied the " + what + " to clipboard.");
+    };
+
+    $("download").onclick = () => {
+        const type = state.mode === "css" ? "text/css" : "text/html";
+        const blob = new Blob([raw()], { type });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = state.name + "." + ext();
+        a.click();
+        URL.revokeObjectURL(a.href);
+    };
+
+    onmessage = (e) => {
+        const msg = e.data.pluginMessage;
+        if (!msg) return;
+        if (msg.type === "error") {
+            setStatus(msg.message, true);
+            show(false);
+        } else if (msg.type === "result") {
+            state.name = msg.name || "export";
+            state.combined = msg.combined;
+            state.html = msg.html;
+            state.css = msg.css;
+            state.mode = "combined";
+            show(true);
+            render();
+            setStatus(
+                "Done. " +
+                    msg.combined.split("\n").length +
+                    " lines generated.",
+            );
+        }
+    };
+
+    function show(on) {
+        // The HTML/CSS split only applies to CSS mode; Tailwind is one combined file.
+        $("tabs").style.display =
+            on && state.framework === "css" ? "flex" : "none";
+        $("output").style.display = on ? "block" : "none";
+        $("actions").style.display = on ? "flex" : "none";
+    }
+
+    function setStatus(text, isError) {
+        const s = $("status");
+        s.textContent = text;
+        s.className = "status" + (isError ? " error" : "");
+    }
+</script>

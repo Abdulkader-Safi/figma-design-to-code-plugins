@@ -27,14 +27,46 @@
 
 ```
 npm install        # first time
-npm run build       # compile code.ts -> code.js
-npm run watch       # rebuild on save
+npm run build       # build ui.html + code.js
+npm run build:js    # bundle src/ -> code.js (esbuild)
+npm run build:ui    # compile Tailwind + inline into ui.html
+npm run watch       # rebuild code.js on save
+npm run typecheck   # tsc, no emit
 npm run lint        # eslint
 ```
 
 Load the plugin in Figma via **Plugins > Development > Import plugin from manifest** and pick `manifest.json`.
 
-`code.ts` runs in the Figma sandbox (has the `figma` API). `ui.html` is the panel iframe. They talk over `postMessage`.
+Figma loads exactly one main script (`code.js`) and one UI file (`ui.html`), so both are generated build artifacts (git-ignored). Run `npm run build` before loading the plugin.
+
+The plugin logic lives in `src/`, split by concern, and esbuild bundles it into `code.js`:
+
+```
+src/
+  main.ts        entry: shows the UI, handles export requests
+  generate.ts    walks the node tree, emits the HTML/CSS document
+  semantic.ts    heading / landmark / button tag heuristics
+  layout.ts      auto-layout -> flexbox, static frames -> absolute
+  decoration.ts  background, radius, borders, shadows
+  text.ts        font, size, colour, inline text styling
+  tailwind.ts    CSS rule -> Tailwind v4 utility classes
+  values.ts      colour + number converters, string helpers
+  nodes.ts       node-shape predicates (vector, icon, image, auto-layout)
+  document.ts    Google Fonts link + HTML shell
+  types.ts       the shared Rule type
+```
+
+The panel UI is styled with Tailwind v4. Because the Figma iframe can't load a
+CDN, the stylesheet is compiled at build time and inlined into `ui.html`:
+
+```
+src/ui/
+  ui.template.html  panel markup (utility classes) + the panel script
+  styles.css        Tailwind entry: @theme palette + a small @layer for the
+                    stateful classes the script toggles (tabs, status, tokens)
+scripts/
+  build-ui.mjs      inlines the compiled CSS into the template -> ui.html
+```
 
 ## Publishing
 
