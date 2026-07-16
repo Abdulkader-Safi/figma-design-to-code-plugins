@@ -1,5 +1,5 @@
 {
-  "name": "rspress-doc-template",
+  "name": "design-to-html-docs",
   "version": "1.0.0",
   "private": true,
   "type": "module",
@@ -9,7 +9,8 @@
     "dev": "rspress dev",
     "format": "biome format --write",
     "lint": "eslint .",
-    "preview": "rspress preview"
+    "preview": "rspress preview",
+    "rsync:prod": "rspress build && rsync -azP --delete $(pwd)/doc_build/ safi:/var/www/design-to-html.abdulkadersafi.com"
   },
   "dependencies": {
     "@rspress/core": "^2.0.16"
