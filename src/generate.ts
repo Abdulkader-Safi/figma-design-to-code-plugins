@@ -3,7 +3,7 @@
 // pulls colours, typography, radius, borders, shadows.
 
 import type { Rule } from "./types";
-import { solidFill, linearGradient, escapeHtml, round } from "./values";
+import { solidFill, gradientFill, escapeHtml, round } from "./values";
 import {
   isAutoLayout,
   isVectorLike,
@@ -45,7 +45,7 @@ export async function generate(
   const pageW = "width" in root ? Math.round(root.width) : 0;
   const pageBg =
     "fills" in root && Array.isArray(root.fills)
-      ? solidFill(root.fills) || linearGradient(root.fills)
+      ? solidFill(root.fills) || gradientFill(root.fills)
       : null;
 
   // Map heading font sizes -> h1..h6. The most common size is treated as body;

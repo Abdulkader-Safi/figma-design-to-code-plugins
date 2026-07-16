@@ -12,18 +12,66 @@ export function solidFill(
   return f ? rgba(f.color, f.opacity) : null;
 }
 
-export function linearGradient(
+// Any gradient paint -> a CSS gradient. Linear reads its real angle from
+// gradientTransform; radial and angular (conic) render with all their stops and
+// a best-effort center; diamond falls back to radial (CSS has no diamond form).
+export function gradientFill(
   fills: readonly Paint[] | typeof figma.mixed,
 ): string | null {
   if (!Array.isArray(fills)) return null;
   const g = fills.find(
-    (x) => x.visible !== false && x.type === "GRADIENT_LINEAR",
+    (x) =>
+      x.visible !== false &&
+      (x.type === "GRADIENT_LINEAR" ||
+        x.type === "GRADIENT_RADIAL" ||
+        x.type === "GRADIENT_ANGULAR" ||
+        x.type === "GRADIENT_DIAMOND"),
   ) as GradientPaint | undefined;
   if (!g) return null;
+
+  // Stops as "color pos%", shared by every gradient kind (conic accepts the
+  // percentage form too, as a fraction of the turn).
   const stops = g.gradientStops
     .map((s) => `${rgba(s.color, s.color.a)} ${Math.round(s.position * 100)}%`)
     .join(", ");
-  return `linear-gradient(180deg, ${stops})`; // ponytail: fixed 180deg; read gradientTransform for exact angle if needed
+
+  const t = g.gradientTransform; // [[a, b, tx], [c, d, ty]]
+  if (g.type === "GRADIENT_LINEAR")
+    return `linear-gradient(${gradientAngle(t)}deg, ${stops})`;
+  if (g.type === "GRADIENT_ANGULAR")
+    return `conic-gradient(from ${gradientRotation(t)}deg at ${gradientCenter(t)}, ${stops})`;
+  // ponytail: diamond falls back to radial (CSS has no diamond gradient).
+  return `radial-gradient(${gradientCenter(t)}, ${stops})`;
+}
+
+// CSS angle (deg, in [0,360)) from a linear gradientTransform. The transform
+// maps object-normalized coords to gradient space, so the gradient position
+// increases along object-space direction (a, b) with y pointing down. CSS 0deg
+// points up and turns clockwise (direction (sinθ, -cosθ)), giving atan2(a, -b).
+function gradientAngle(t: Transform): number {
+  const deg = (Math.atan2(t[0][0], -t[0][1]) * 180) / Math.PI;
+  return ((Math.round(deg) % 360) + 360) % 360;
+}
+
+// Conic start angle: the rotation of the transform's linear part.
+function gradientRotation(t: Transform): number {
+  const deg = (Math.atan2(t[1][0], t[0][0]) * 180) / Math.PI;
+  return ((Math.round(deg) % 360) + 360) % 360;
+}
+
+// Gradient center as "cx% cy%", from the inverse of the transform's 2x2 linear
+// part applied to the gradient-space center (0.5, 0.5). Falls back to "50% 50%"
+// when the matrix is degenerate; out-of-range centers are kept (CSS allows them).
+function gradientCenter(t: Transform): string {
+  const [a, b, tx] = t[0];
+  const [c, d, ty] = t[1];
+  const det = a * d - b * c;
+  if (!Number.isFinite(det) || Math.abs(det) < 1e-6) return "50% 50%";
+  const px = 0.5 - tx;
+  const py = 0.5 - ty;
+  const cx = (d * px - b * py) / det;
+  const cy = (-c * px + a * py) / det;
+  return `${round(cx * 100)}% ${round(cy * 100)}%`;
 }
 
 export function rgba(c: RGB | RGBA, opacity?: number): string {
