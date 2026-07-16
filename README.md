@@ -10,7 +10,7 @@
 
 - Auto-layout frames become flexbox (direction, gap, padding, alignment, hug/fill sizing).
 - Static frames and groups become absolutely positioned children.
-- Pulls solid and linear-gradient fills, corner radius, borders, and drop/inner shadows.
+- Pulls solid and gradient fills (linear at its real angle, plus radial and angular), corner radius, borders, and drop/inner shadows.
 - Text nodes keep their content, font family, weight, size, color, alignment, line height, letter spacing, and case.
 - Vectors and icons are inlined as SVG. Image fills export as PNG data URIs.
 - Fonts used by text are emitted as a Google Fonts `<link>`. Non-Google families fall back gracefully.

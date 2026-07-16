@@ -7,7 +7,7 @@ Ideas for making Design to HTML more useful, based on what the leading Figma to 
 Already shipped, so these are the baseline:
 
 - Auto-layout to flexbox, static frames and groups to absolute positioning.
-- Solid fills, linear gradients, per-side borders, corner radius, drop and inner shadows.
+- Solid fills, gradients (linear at the true angle, plus radial and angular), per-side borders, corner radius, drop and inner shadows.
 - Full text styling: family, weight, size, color, alignment, line height, letter spacing, case.
 - Vectors and icons inlined as SVG, image fills exported as PNG. (Note: FigmaToCode does not support these at all, so this is a real edge.)
 - Google Fonts link built from the fonts actually used.
@@ -21,7 +21,7 @@ Already shipped, so these are the baseline:
 - [x] **Semantic tags from node type and layer name.** Use `button`, `nav`, `header`, `section`, `ul`, `h1` to `h6`, `p`, and `img` where the intent is clear, instead of `div` everywhere. Big readability jump for a small change.
 - [ ] **Formatted vs minified toggle.** Some people want to paste, some want to ship.
 - [ ] **Quote style and class prefix options.** Small, but reviewers and teams care about house style.
-- [ ] **Fix gradient angle.** Read `gradientTransform` for the real angle instead of the fixed 180deg fallback, and support radial and angular gradients with all stops.
+- [x] **Fix gradient angle.** Read `gradientTransform` for the real angle instead of the fixed 180deg fallback, and support radial and angular gradients with all stops.
 
 ## Tier 1: the features competitors win on
 
