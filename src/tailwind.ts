@@ -265,6 +265,10 @@ function twUtil(k: string, v: string): string {
           : v === "auto"
             ? "h-auto"
             : `h-[${a}]`;
+    case "min-width":
+      return parseFloat(v) === 0 ? "min-w-0" : `min-w-[${a}]`;
+    case "min-height":
+      return parseFloat(v) === 0 ? "min-h-0" : `min-h-[${a}]`;
     case "gap": {
       const px = parseFloat(v);
       return Number.isNaN(px) ? `gap-[${a}]` : scaleUtil("gap", px) || "gap-0";

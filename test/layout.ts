@@ -78,6 +78,46 @@ assert(r.left === "12px" && r.top === "8px", `plain position: ${r.left},${r.top}
 assert(r.width === "200px" && r.height === "60px", `plain size: ${r.width}x${r.height}`);
 assert(r.transform === undefined, "no transform on an unrotated node");
 
+// A filling image must be free to shrink to its share. Its intrinsic width is
+// the exported PNG's (2x the design), and min-width:auto would pin it there and
+// shove its siblings out of the row.
+const fillingImage = {
+  width: 440,
+  height: 348,
+  x: 0,
+  y: 0,
+  rotation: 0,
+  layoutSizingHorizontal: "FILL",
+  layoutSizingVertical: "FILL",
+} as never as SceneNode;
+
+r = {};
+positionAndSize(fillingImage, frame(), false, true, r);
+assert(r.flex === "1 1 0", `fills the row: ${r.flex}`);
+assert(r["min-width"] === "0", `main-axis min floor cleared: ${r["min-width"]}`);
+assert(r["align-self"] === "stretch", `cross axis stretches: ${r["align-self"]}`);
+assert(r["min-height"] === undefined, "the cross axis has no automatic minimum");
+assert(r.width === undefined && r.height === undefined, "a FILL child sets no fixed size");
+
+// Same node in a column: the floor moves to the axis it flexes along.
+r = {};
+positionAndSize(fillingImage, frame({ layoutMode: "VERTICAL" }), false, true, r);
+assert(r.flex === "1 1 0" && r["min-height"] === "0", `column main axis: ${JSON.stringify(r)}`);
+assert(r["min-width"] === undefined, "no floor cleared on the cross axis");
+
+// A FIXED child keeps its size and must not gain a min-* override.
+r = {};
+positionAndSize(
+  { ...(plain as object), layoutSizingHorizontal: "FIXED", layoutSizingVertical: "FIXED" } as never as SceneNode,
+  frame(),
+  false,
+  false,
+  r,
+);
+assert(r.width === "200px" && r.height === "60px", `FIXED keeps its box: ${r.width}x${r.height}`);
+assert(r["min-width"] === undefined && r["min-height"] === undefined, "no min-* on a FIXED child");
+assert(r["flex-shrink"] === 0, "a FIXED child in an auto-layout row does not shrink");
+
 // The "Ignore auto layout" toggle is what pulls a child out of the flow.
 assert(
   ignoresAutoLayout({ layoutPositioning: "ABSOLUTE" } as never as SceneNode),

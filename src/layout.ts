@@ -79,13 +79,25 @@ export function positionAndSize(
     "layoutSizingVertical" in node ? node.layoutSizingVertical : "FIXED"
   ) as string;
 
-  if (hSize === "FILL")
-    rule[hParent ? "flex" : "align-self"] = hParent ? "1 1 0" : "stretch";
-  else if (hSize === "FIXED" && w !== undefined) rule.width = `${w}px`;
+  // A flex item defaults to min-width/min-height: auto, which floors it at its
+  // content's intrinsic size. An <img> is the painful case: its intrinsic width
+  // is the exported PNG's pixel width (twice the design size, since we export at
+  // 2x), so a filling image refuses to shrink to its share and shoves its
+  // siblings out of the row. Figma has no such floor, so clear it on the axis
+  // the item flexes along.
+  if (hSize === "FILL") {
+    if (hParent) {
+      rule.flex = "1 1 0";
+      rule["min-width"] = "0";
+    } else rule["align-self"] = "stretch";
+  } else if (hSize === "FIXED" && w !== undefined) rule.width = `${w}px`;
 
-  if (vSize === "FILL")
-    rule[vParent ? "flex" : "align-self"] = vParent ? "1 1 0" : "stretch";
-  else if (vSize === "FIXED" && h !== undefined) rule.height = `${h}px`;
+  if (vSize === "FILL") {
+    if (vParent) {
+      rule.flex = "1 1 0";
+      rule["min-height"] = "0";
+    } else rule["align-self"] = "stretch";
+  } else if (vSize === "FIXED" && h !== undefined) rule.height = `${h}px`;
 
   // Figma auto-layout items keep their size; CSS flex items shrink to fit by
   // default. Lock the main-axis size unless it's FILL, so a fixed-height (or
