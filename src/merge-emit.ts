@@ -70,6 +70,7 @@ interface Unit {
   text?: string;
   asset?: string;
   bleedBg?: string;
+  href?: string;
 }
 
 // A text node whose content differs across breakpoints becomes one unit per
@@ -92,6 +93,7 @@ function textUnits(n: MergedNode): Unit[] {
         rulesByToken: n.rulesByToken,
         presentAt: n.presentAt,
         text: entries[0]?.[0] ?? "",
+        href: n.href,
       },
     ];
   }
@@ -104,6 +106,7 @@ function textUnits(n: MergedNode): Unit[] {
     >,
     presentAt: toks,
     text: str,
+    href: n.href,
   }));
 }
 
@@ -183,7 +186,8 @@ export function emitMerged(
       return `${indent}<img class="${cls}" ${unit.asset} />`;
     }
     if (unit.kind === "text") {
-      return `${indent}<${unit.tag} class="${cls}">${textInner(unit.text ?? "")}</${unit.tag}>`;
+      const attrs = unit.tag === "a" ? ` href="${unit.href ?? "#"}"` : "";
+      return `${indent}<${unit.tag} class="${cls}"${attrs}>${textInner(unit.text ?? "")}</${unit.tag}>`;
     }
     if (unit.kind === "asset") {
       return `${indent}<${unit.tag} class="${cls}">${unit.asset ?? ""}</${unit.tag}>`;

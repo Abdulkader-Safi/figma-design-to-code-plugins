@@ -338,3 +338,134 @@ export async function generate(
     css: stylesheet,
   };
 }
+
+// The style, tag, and content a node would get in single-frame export, computed
+// standalone so the responsive builder can style the same node in any frame.
+export interface NodeStyle {
+  rule: Rule;
+  tag: string;
+  kind: "element" | "text" | "asset";
+  asset?: string; // SVG string (kind asset, tag div) or img attributes (tag img)
+  text?: string; // text characters (kind text)
+  href?: string; // link target when tag is "a"
+  bleedBg?: string; // full-viewport bleed background; the emitter paints it
+}
+
+export interface NodeCtx {
+  headings: Map<number, string>;
+  semantic: boolean;
+  addFont: (family: string, weight: number) => void;
+  pageW: number; // the containing frame's width, for full-bleed detection
+  topBand: boolean; // parent is the frame root (landmark bands apply)
+  inList: boolean; // parent is ul/ol (children become li)
+  interactive: boolean; // inside an a/button (text links are suppressed)
+}
+
+// Mirror of build()'s per-node computation, without emitting HTML. build() is
+// intentionally left untouched so single-frame output stays byte-identical; keep
+// this in step with it. Returns null for a hidden node. Mixed-styled text is
+// rendered with its uniform (node-level) style only; per-run spans are a
+// single-frame-only refinement.
+export async function nodeRule(
+  node: SceneNode,
+  parent: SceneNode | null,
+  ctx: NodeCtx,
+): Promise<NodeStyle | null> {
+  if ("visible" in node && node.visible === false) return null;
+
+  const rule: Rule = {};
+  const absolute =
+    parent !== null && (!isAutoLayout(parent) || ignoresAutoLayout(node));
+  const asSvg = isVectorLike(node) || isIconContainer(node);
+  const asImg = !asSvg && hasImageFill(node);
+
+  positionAndSize(node, parent, absolute, asSvg || asImg, rule);
+  if (
+    "opacity" in node &&
+    typeof node.opacity === "number" &&
+    node.opacity < 1
+  ) {
+    rule.opacity = round(node.opacity);
+  }
+
+  if (asSvg) {
+    let svg = "";
+    try {
+      svg = await node.exportAsync({ format: "SVG_STRING" });
+    } catch {
+      /* fall through to empty box */
+    }
+    return { rule, tag: "div", kind: "asset", asset: svg };
+  }
+
+  if (asImg) {
+    applyBoxDecoration(node, rule);
+    try {
+      const bytes = await node.exportAsync({
+        format: "PNG",
+        constraint: { type: "SCALE", value: 2 },
+      });
+      const b64 = figma.base64Encode(bytes);
+      rule["object-fit"] = "cover";
+      return {
+        rule,
+        tag: "img",
+        kind: "asset",
+        asset: `src="data:image/png;base64,${b64}" alt="${escapeHtml(node.name)}"`,
+      };
+    } catch {
+      return { rule, tag: "div", kind: "element" };
+    }
+  }
+
+  if (node.type === "TEXT") {
+    if (hugsText(node)) {
+      delete rule.width;
+      delete rule.height;
+      rule["white-space"] = "nowrap";
+    }
+    rule["text-align"] = ALIGN[node.textAlignHorizontal] || "left";
+    styleRule(node, rule, ctx.addFont); // uniform; mixed fields are skipped
+    const tag = ctx.inList
+      ? "li"
+      : ctx.semantic
+        ? textTag(node, ctx.headings, ctx.interactive)
+        : "p";
+    let href: string | undefined;
+    if (tag === "a") {
+      const link = node.hyperlink;
+      href = link && typeof link === "object" ? escapeHtml(link.value) : "#";
+    }
+    return { rule, tag, kind: "text", text: node.characters, href };
+  }
+
+  applyBoxDecoration(node, rule);
+  applyLayout(node, rule);
+  if (parent === null) delete rule.overflow;
+
+  let bleedBg: string | undefined;
+  if (
+    parent !== null &&
+    rule.background &&
+    "width" in node &&
+    node.width >= ctx.pageW * 0.98 &&
+    !Object.keys(rule).some((k) => k.startsWith("border"))
+  ) {
+    bleedBg = String(rule.background);
+    delete rule.background;
+    delete rule.overflow;
+    rule.position = "relative";
+    rule["z-index"] = "0";
+  }
+
+  const kids = "children" in node ? node.children.slice() : [];
+  const anchors = !isAutoLayout(node) || kids.some(ignoresAutoLayout);
+  if (kids.length && anchors && !rule.position) rule.position = "relative";
+
+  const tag = ctx.inList
+    ? "li"
+    : ctx.semantic
+      ? containerTag(node, ctx.topBand)
+      : "div";
+  return { rule, tag, kind: "element", bleedBg };
+}

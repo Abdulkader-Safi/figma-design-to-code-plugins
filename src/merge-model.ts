@@ -22,6 +22,8 @@ export interface MergedNode {
   // A full-viewport-bleed background, when the node qualifies (carried through
   // from the single-frame bleed rule). Emitter turns this into a ::before.
   bleedBg?: string;
+  // Link target when tag is "a".
+  href?: string;
 }
 
 // Properties of `other` whose serialised value differs from `base` (added or
