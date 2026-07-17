@@ -18,11 +18,12 @@ export const STANDARD: { token: Token; minWidth: number }[] = [
   { token: "2xl", minWidth: 1536 },
 ];
 
-// Sort frames by width; the smallest is base. Each larger frame takes the
-// largest standard token at or below its width that is still above the previous
-// frame's token, so tokens strictly increase and never collide. If a frame is
-// narrower than the next token above prev, it still advances to that next token
-// to preserve order.
+// Sort frames by width; the smallest is base. Each larger layout activates
+// around the MIDPOINT between its designed width and the next-smaller frame's,
+// which is how a breakpoint is actually chosen: the switch sits partway between
+// two designed sizes, not at the larger one's own width. That midpoint snaps to
+// the nearest standard token above the previous frame's, so tokens strictly
+// increase and a desktop mockup does not push its breakpoint needlessly high.
 export function assignBreakpoints(widths: number[]): Assigned[] {
   const order = widths
     .map((width, index) => ({ width, index }))
@@ -37,11 +38,18 @@ export function assignBreakpoints(widths: number[]): Assigned[] {
       prevMin = 0;
       continue;
     }
-    // Largest standard token whose min-width is <= width and > prevMin.
-    let pick = STANDARD.filter((s) => s.minWidth <= width && s.minWidth > prevMin).pop();
-    // None fits below width: advance to the smallest token above prevMin.
-    if (!pick) pick = STANDARD.find((s) => s.minWidth > prevMin);
-    if (!pick) throw new Error("Too many frames for one responsive set (max 6).");
+    const activation = (width + order[i - 1].width) / 2;
+    const candidates = STANDARD.filter((s) => s.minWidth > prevMin);
+    if (candidates.length === 0) {
+      throw new Error("Too many frames for one responsive set (max 6).");
+    }
+    // The standard token nearest the activation width; ties take the smaller.
+    let pick = candidates[0];
+    for (const c of candidates) {
+      if (Math.abs(c.minWidth - activation) < Math.abs(pick.minWidth - activation)) {
+        pick = c;
+      }
+    }
     out.push({ index, token: pick.token, minWidth: pick.minWidth });
     prevMin = pick.minWidth;
   }

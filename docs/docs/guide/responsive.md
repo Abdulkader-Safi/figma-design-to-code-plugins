@@ -33,18 +33,18 @@ A dashboard with no mobile view is fine. A mobile app screen with no desktop is 
 
 ## Width sets the breakpoint
 
-The label is only a name. The frame's width decides where its layout applies. The smallest frame is the base (it applies everywhere), and each larger frame takes the standard breakpoint at or below its width:
+The label is only a name. The frame's width decides where its layout applies. The smallest frame is the base and applies everywhere. Each larger layout switches on around the midpoint between it and the next-smaller frame, snapped to the nearest standard breakpoint:
 
-| Breakpoint | Applies from |
-| ---------- | ------------ |
-| base       | 0            |
-| sm         | 640px        |
-| md         | 768px        |
-| lg         | 1024px       |
-| xl         | 1280px       |
-| 2xl        | 1536px       |
+| Breakpoint | Min width |
+| ---------- | --------- |
+| base       | 0         |
+| sm         | 640px     |
+| md         | 768px     |
+| lg         | 1024px    |
+| xl         | 1280px    |
+| 2xl        | 1536px    |
 
-So a 390px frame is the base, an 810px frame becomes `md`, and a 1440px frame becomes `xl`. This is mobile-first: the base styles apply to every screen, and wider frames override them upward. It is the same model whether you export CSS or Tailwind.
+So a mobile frame at 390px and a desktop frame at 1440px switch at their midpoint, about 915px, which snaps to `lg` (1024px): the desktop layout shows from 1024px up, mobile below it. The switch sits between the two designed sizes, the way you would place a breakpoint by hand, rather than at the larger frame's own width. This is mobile-first: the base styles apply to every screen and wider frames override them upward, the same in CSS and Tailwind.
 
 ## What the output looks like
 

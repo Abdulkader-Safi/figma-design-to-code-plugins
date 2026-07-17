@@ -24,7 +24,7 @@ assert(set.kind === "responsive", `clean set is responsive, got ${set.kind}`);
 if (set.kind === "responsive") {
   assert(set.name === "Home", `set name is the shared prefix, got ${set.name}`);
   assert(
-    set.variants.map((v) => v.token).join(",") === "base,md,xl",
+    set.variants.map((v) => v.token).join(",") === "base,sm,lg",
     `tokens -> ${set.variants.map((v) => v.token)}`,
   );
   assert(set.variants[0].variant === "Mobile", "base is the smallest (Mobile)");
