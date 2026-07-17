@@ -309,11 +309,8 @@
             state.mode = "combined";
             show(true);
             render();
-            setStatus(
-                "Done. " +
-                    msg.combined.split("\n").length +
-                    " lines generated.",
-            );
+            const lines = msg.combined.split("\n").length + " lines generated.";
+            setStatus(msg.summary ? msg.summary + ". " + lines : "Done. " + lines);
         }
     };
 

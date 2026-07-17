@@ -18,6 +18,9 @@ import { applyBoxDecoration } from "./decoration";
 import { styleRule, ALIGN } from "./text";
 import { toTailwind, fontSlug } from "./tailwind";
 import { fontLink, docShell } from "./document";
+import { buildMergedTree } from "./merge-build";
+import { emitMerged } from "./merge-emit";
+import { parseFrameName, type FrameVariant } from "./responsive";
 
 // A background value -> a Tailwind bg-[…] utility (a hex, or an arbitrary image
 // like a gradient with spaces underscored).
@@ -337,4 +340,196 @@ export async function generate(
     html: docShell(root.name, links, linkBlock, body),
     css: stylesheet,
   };
+}
+
+// Export a responsive set: overlay the variant frames into one merged tree, then
+// serialise it with per-breakpoint CSS or Tailwind. Fonts accumulate across all
+// frames; the page background and title come from the base (smallest) frame.
+export async function generateResponsive(
+  variants: FrameVariant[],
+  opts: { semantic: boolean; tailwind: boolean },
+): Promise<{ combined: string; html: string; css: string }> {
+  const fonts = new Map<string, Set<number>>();
+  const addFont = (family: string, weight: number) => {
+    if (!fonts.has(family)) fonts.set(family, new Set());
+    fonts.get(family)!.add(weight);
+  };
+
+  const base = variants[0].frame;
+  const pageBg =
+    "fills" in base && Array.isArray(base.fills)
+      ? solidFill(base.fills) || gradientFill(base.fills)
+      : null;
+
+  const tree = await buildMergedTree(variants, { semantic: opts.semantic }, addFont);
+  return emitMerged(tree, {
+    title: parseFrameName(base.name).prefix || base.name,
+    tailwind: opts.tailwind,
+    fonts,
+    pageBg,
+  });
+}
+
+// The style, tag, and content a node would get in single-frame export, computed
+// standalone so the responsive builder can style the same node in any frame.
+export interface NodeStyle {
+  rule: Rule;
+  tag: string;
+  kind: "element" | "text" | "asset";
+  asset?: string; // SVG string (kind asset, tag div) or img attributes (tag img)
+  text?: string; // text characters (kind text)
+  href?: string; // link target when tag is "a"
+  bleedBg?: string; // full-viewport bleed background; the emitter paints it
+}
+
+export interface NodeCtx {
+  headings: Map<number, string>;
+  semantic: boolean;
+  addFont: (family: string, weight: number) => void;
+  pageW: number; // the containing frame's width, for full-bleed detection
+  topBand: boolean; // parent is the frame root (landmark bands apply)
+  inList: boolean; // parent is ul/ol (children become li)
+  interactive: boolean; // inside an a/button (text links are suppressed)
+}
+
+// Mirror of build()'s per-node computation, without emitting HTML. build() is
+// intentionally left untouched so single-frame output stays byte-identical; keep
+// this in step with it. Returns null for a hidden node. `text` is returned as
+// ready-to-place HTML (escaped, mixed runs as inline-styled spans). When
+// exportAssets is false the SVG/PNG export is skipped: the merge only keeps one
+// frame's asset, so the others need the rule, not the pixels.
+export async function nodeRule(
+  node: SceneNode,
+  parent: SceneNode | null,
+  ctx: NodeCtx,
+  exportAssets = true,
+): Promise<NodeStyle | null> {
+  if ("visible" in node && node.visible === false) return null;
+
+  const rule: Rule = {};
+  const absolute =
+    parent !== null && (!isAutoLayout(parent) || ignoresAutoLayout(node));
+  const asSvg = isVectorLike(node) || isIconContainer(node);
+  const asImg = !asSvg && hasImageFill(node);
+
+  positionAndSize(node, parent, absolute, asSvg || asImg, rule);
+  if (
+    "opacity" in node &&
+    typeof node.opacity === "number" &&
+    node.opacity < 1
+  ) {
+    rule.opacity = round(node.opacity);
+  }
+
+  if (asSvg) {
+    let svg = "";
+    if (exportAssets) {
+      try {
+        svg = await node.exportAsync({ format: "SVG_STRING" });
+      } catch {
+        /* fall through to empty box */
+      }
+    }
+    return { rule, tag: "div", kind: "asset", asset: svg };
+  }
+
+  if (asImg) {
+    applyBoxDecoration(node, rule);
+    rule["object-fit"] = "cover";
+    if (!exportAssets) return { rule, tag: "img", kind: "asset", asset: "" };
+    try {
+      const bytes = await node.exportAsync({
+        format: "PNG",
+        constraint: { type: "SCALE", value: 2 },
+      });
+      const b64 = figma.base64Encode(bytes);
+      return {
+        rule,
+        tag: "img",
+        kind: "asset",
+        asset: `src="data:image/png;base64,${b64}" alt="${escapeHtml(node.name)}"`,
+      };
+    } catch {
+      return { rule, tag: "div", kind: "element" };
+    }
+  }
+
+  if (node.type === "TEXT") {
+    if (hugsText(node)) {
+      delete rule.width;
+      delete rule.height;
+      rule["white-space"] = "nowrap";
+    }
+    rule["text-align"] = ALIGN[node.textAlignHorizontal] || "left";
+    const tag = ctx.inList
+      ? "li"
+      : ctx.semantic
+        ? textTag(node, ctx.headings, ctx.interactive)
+        : "p";
+    let href: string | undefined;
+    if (tag === "a") {
+      const link = node.hyperlink;
+      href = link && typeof link === "object" ? escapeHtml(link.value) : "#";
+    }
+
+    const segments = node.getStyledTextSegments([
+      "fontName",
+      "fontSize",
+      "fills",
+      "textDecoration",
+      "textCase",
+      "letterSpacing",
+      "lineHeight",
+    ]);
+    let text: string;
+    if (segments.length <= 1) {
+      styleRule(node, rule, ctx.addFont); // uniform text: style the whole node
+      text = escapeHtml(node.characters).replace(/\n/g, "<br>");
+    } else {
+      // Mixed styling: one inline-styled span per run, so colours and sizes
+      // survive without a class per segment (the merge would clash on those).
+      text = segments
+        .map((seg) => {
+          const srule: Rule = {};
+          styleRule(seg, srule, ctx.addFont);
+          const style = Object.keys(srule)
+            .map((k) => `${k}:${srule[k]}`)
+            .join(";");
+          const inner = escapeHtml(seg.characters).replace(/\n/g, "<br>");
+          return `<span style="${style}">${inner}</span>`;
+        })
+        .join("");
+    }
+    return { rule, tag, kind: "text", text, href };
+  }
+
+  applyBoxDecoration(node, rule);
+  applyLayout(node, rule);
+  if (parent === null) delete rule.overflow;
+
+  let bleedBg: string | undefined;
+  if (
+    parent !== null &&
+    rule.background &&
+    "width" in node &&
+    node.width >= ctx.pageW * 0.98 &&
+    !Object.keys(rule).some((k) => k.startsWith("border"))
+  ) {
+    bleedBg = String(rule.background);
+    delete rule.background;
+    delete rule.overflow;
+    rule.position = "relative";
+    rule["z-index"] = "0";
+  }
+
+  const kids = "children" in node ? node.children.slice() : [];
+  const anchors = !isAutoLayout(node) || kids.some(ignoresAutoLayout);
+  if (kids.length && anchors && !rule.position) rule.position = "relative";
+
+  const tag = ctx.inList
+    ? "li"
+    : ctx.semantic
+      ? containerTag(node, ctx.topBand)
+      : "div";
+  return { rule, tag, kind: "element", bleedBg };
 }
