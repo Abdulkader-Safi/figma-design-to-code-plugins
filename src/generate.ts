@@ -18,6 +18,9 @@ import { applyBoxDecoration } from "./decoration";
 import { styleRule, ALIGN } from "./text";
 import { toTailwind, fontSlug } from "./tailwind";
 import { fontLink, docShell } from "./document";
+import { buildMergedTree } from "./merge-build";
+import { emitMerged } from "./merge-emit";
+import { parseFrameName, type FrameVariant } from "./responsive";
 
 // A background value -> a Tailwind bg-[…] utility (a hex, or an arbitrary image
 // like a gradient with spaces underscored).
@@ -337,6 +340,34 @@ export async function generate(
     html: docShell(root.name, links, linkBlock, body),
     css: stylesheet,
   };
+}
+
+// Export a responsive set: overlay the variant frames into one merged tree, then
+// serialise it with per-breakpoint CSS or Tailwind. Fonts accumulate across all
+// frames; the page background and title come from the base (smallest) frame.
+export async function generateResponsive(
+  variants: FrameVariant[],
+  opts: { semantic: boolean; tailwind: boolean },
+): Promise<{ combined: string; html: string; css: string }> {
+  const fonts = new Map<string, Set<number>>();
+  const addFont = (family: string, weight: number) => {
+    if (!fonts.has(family)) fonts.set(family, new Set());
+    fonts.get(family)!.add(weight);
+  };
+
+  const base = variants[0].frame;
+  const pageBg =
+    "fills" in base && Array.isArray(base.fills)
+      ? solidFill(base.fills) || gradientFill(base.fills)
+      : null;
+
+  const tree = await buildMergedTree(variants, { semantic: opts.semantic }, addFont);
+  return emitMerged(tree, {
+    title: parseFrameName(base.name).prefix || base.name,
+    tailwind: opts.tailwind,
+    fonts,
+    pageBg,
+  });
 }
 
 // The style, tag, and content a node would get in single-frame export, computed

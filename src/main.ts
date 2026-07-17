@@ -1,7 +1,9 @@
-// Design to HTML — exports the selected Figma frame to a self-contained
-// HTML/CSS file. Entry point: shows the UI and handles export requests.
+// Design to HTML — exports the selected Figma frame, or a set of frames of one
+// page, to a self-contained HTML/CSS file. Entry point: shows the UI and handles
+// export requests.
 
-import { generate } from "./generate";
+import { generate, generateResponsive } from "./generate";
+import { planExport } from "./responsive";
 import { sanitizeFileName } from "./values";
 
 figma.showUI(__html__, { width: 600, height: 780, themeColors: true });
@@ -13,30 +15,46 @@ figma.ui.onmessage = async (msg: {
 }) => {
   if (msg.type !== "export") return;
 
-  const sel = figma.currentPage.selection;
-  const root = sel.find(
+  const nodes = figma.currentPage.selection.filter(
     (n) =>
       n.type === "FRAME" ||
       n.type === "COMPONENT" ||
       n.type === "INSTANCE" ||
       n.type === "GROUP",
   );
-  if (!root) {
-    figma.ui.postMessage({
-      type: "error",
-      message: "Select a frame, component, or group to export.",
-    });
+
+  const plan = planExport(nodes);
+  if (plan.kind === "error") {
+    figma.ui.postMessage({ type: "error", message: plan.message });
     return;
   }
 
+  const opts = {
+    semantic: msg.semantic !== false,
+    tailwind: msg.tailwind === true,
+  };
+
   try {
-    const out = await generate(root, {
-      semantic: msg.semantic !== false,
-      tailwind: msg.tailwind === true,
-    });
+    let out;
+    let name: string;
+    let summary: string | undefined;
+    if (plan.kind === "responsive") {
+      out = await generateResponsive(plan.variants, opts);
+      name = sanitizeFileName(plan.name);
+      const parts = plan.variants.map((v) => {
+        if (v.token !== "base") return v.token;
+        const w = "width" in v.frame ? Math.round(v.frame.width) : 0;
+        return `base ${w}`;
+      });
+      summary = `${plan.variants.length} frames -> ${parts.join(", ")}`;
+    } else {
+      out = await generate(plan.frame, opts);
+      name = sanitizeFileName(plan.frame.name);
+    }
     figma.ui.postMessage({
       type: "result",
-      name: sanitizeFileName(root.name),
+      name,
+      summary,
       combined: out.combined,
       html: out.html,
       css: out.css,
