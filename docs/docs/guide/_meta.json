@@ -17,5 +17,6 @@
     "label": "Export"
   },
   "css-vs-tailwind",
-  "exporting"
+  "exporting",
+  "responsive"
 ]

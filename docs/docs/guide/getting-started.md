@@ -34,7 +34,7 @@ Open the downloaded file in a browser. It should look like your frame, because e
 
 A few quick checks, in order:
 
-- **Nothing selected?** The plugin needs exactly one selected layer. Select the frame and run it again.
+- **Nothing selected?** The plugin needs at least one selected layer. Select the frame and run it again.
 - **Everything is absolutely positioned?** Your frame is not using auto layout. See [Use auto layout](/guide/auto-layout).
 - **Titles are plain paragraphs?** The plugin did not see them as headings. See [Headings and text](/guide/headings-and-text).
 - **A tag is wrong or missing?** The layer name drives it. See [Name your layers](/guide/naming-layers).
@@ -42,3 +42,5 @@ A few quick checks, in order:
 ## What to read next
 
 Once you have a working export, the next three pages are about designing the frame so the export comes out clean the first time. Start with [naming your layers](/guide/naming-layers).
+
+Designing the same page at several widths? Select all the frames at once and see [Responsive export](/guide/responsive).

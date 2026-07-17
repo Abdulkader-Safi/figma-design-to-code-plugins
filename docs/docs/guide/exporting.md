@@ -26,6 +26,8 @@ One self-contained HTML file. Everything the page needs is inside it:
 
 Because it is one file with no external assets except the fonts link, you can open it straight in a browser, drop it into a static host, or paste the relevant part into a component.
 
+Designing the page at more than one width? Select all the frames and read [Responsive export](/guide/responsive) to get a single file that reflows.
+
 ## Semantic tags on or off
 
 - **On** (recommended): you get real tags. The nav is a `<nav>`, sections are `<section>`, titles are headings, buttons are `<button>`. This is what the naming and heading guides are about.
