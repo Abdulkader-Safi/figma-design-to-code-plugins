@@ -74,4 +74,18 @@ const css3 = emitMerged(withCta, { title: "Home", tailwind: false, fonts: new Ma
 assert(css3.combined.includes("Sign up") && css3.combined.includes("Sign up for free"), "both text variants present");
 assert(css3.combined.includes(".cta-3-t0") && css3.combined.includes(".cta-3-t1"), "two suffixed classes for the text variants");
 
+// Text is placed as-is (the builder pre-renders mixed runs as inline-styled
+// spans), so markup in the text must survive unescaped.
+const mixed: MergedNode = {
+  tag: "h1",
+  className: "num-4",
+  kind: "text",
+  rulesByToken: { base: { "text-align": "left" } },
+  presentAt: ["base"],
+  children: [],
+  textByToken: { base: '<span style="color:#fff">300</span><span style="color:#f5c518">+</span>' },
+};
+const css4 = emitMerged({ ...root, children: [mixed] }, { title: "Home", tailwind: false, fonts: new Map(), pageBg: null });
+assert(css4.combined.includes('<span style="color:#fff">300</span>'), "mixed-run span kept raw, not escaped");
+
 console.log("merge-emit: all checks passed");

@@ -394,13 +394,15 @@ export interface NodeCtx {
 
 // Mirror of build()'s per-node computation, without emitting HTML. build() is
 // intentionally left untouched so single-frame output stays byte-identical; keep
-// this in step with it. Returns null for a hidden node. Mixed-styled text is
-// rendered with its uniform (node-level) style only; per-run spans are a
-// single-frame-only refinement.
+// this in step with it. Returns null for a hidden node. `text` is returned as
+// ready-to-place HTML (escaped, mixed runs as inline-styled spans). When
+// exportAssets is false the SVG/PNG export is skipped: the merge only keeps one
+// frame's asset, so the others need the rule, not the pixels.
 export async function nodeRule(
   node: SceneNode,
   parent: SceneNode | null,
   ctx: NodeCtx,
+  exportAssets = true,
 ): Promise<NodeStyle | null> {
   if ("visible" in node && node.visible === false) return null;
 
@@ -421,23 +423,26 @@ export async function nodeRule(
 
   if (asSvg) {
     let svg = "";
-    try {
-      svg = await node.exportAsync({ format: "SVG_STRING" });
-    } catch {
-      /* fall through to empty box */
+    if (exportAssets) {
+      try {
+        svg = await node.exportAsync({ format: "SVG_STRING" });
+      } catch {
+        /* fall through to empty box */
+      }
     }
     return { rule, tag: "div", kind: "asset", asset: svg };
   }
 
   if (asImg) {
     applyBoxDecoration(node, rule);
+    rule["object-fit"] = "cover";
+    if (!exportAssets) return { rule, tag: "img", kind: "asset", asset: "" };
     try {
       const bytes = await node.exportAsync({
         format: "PNG",
         constraint: { type: "SCALE", value: 2 },
       });
       const b64 = figma.base64Encode(bytes);
-      rule["object-fit"] = "cover";
       return {
         rule,
         tag: "img",
@@ -456,7 +461,6 @@ export async function nodeRule(
       rule["white-space"] = "nowrap";
     }
     rule["text-align"] = ALIGN[node.textAlignHorizontal] || "left";
-    styleRule(node, rule, ctx.addFont); // uniform; mixed fields are skipped
     const tag = ctx.inList
       ? "li"
       : ctx.semantic
@@ -467,7 +471,36 @@ export async function nodeRule(
       const link = node.hyperlink;
       href = link && typeof link === "object" ? escapeHtml(link.value) : "#";
     }
-    return { rule, tag, kind: "text", text: node.characters, href };
+
+    const segments = node.getStyledTextSegments([
+      "fontName",
+      "fontSize",
+      "fills",
+      "textDecoration",
+      "textCase",
+      "letterSpacing",
+      "lineHeight",
+    ]);
+    let text: string;
+    if (segments.length <= 1) {
+      styleRule(node, rule, ctx.addFont); // uniform text: style the whole node
+      text = escapeHtml(node.characters).replace(/\n/g, "<br>");
+    } else {
+      // Mixed styling: one inline-styled span per run, so colours and sizes
+      // survive without a class per segment (the merge would clash on those).
+      text = segments
+        .map((seg) => {
+          const srule: Rule = {};
+          styleRule(seg, srule, ctx.addFont);
+          const style = Object.keys(srule)
+            .map((k) => `${k}:${srule[k]}`)
+            .join(";");
+          const inner = escapeHtml(seg.characters).replace(/\n/g, "<br>");
+          return `<span style="${style}">${inner}</span>`;
+        })
+        .join("");
+    }
+    return { rule, tag, kind: "text", text, href };
   }
 
   applyBoxDecoration(node, rule);

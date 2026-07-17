@@ -62,25 +62,39 @@ export async function buildMergedTree(
   ): Promise<MergedNode | null> {
     const inList = parentTag === "ul" || parentTag === "ol";
 
-    const styleByToken = new Map<Token, NodeStyle>();
-    for (const t of ORDER) {
+    // Presence is just visibility (what nodeRule would return non-null for), so
+    // the primary token is known before styling. Only the primary frame's asset
+    // is kept, so only it is exported; the rest skip the costly exportAsync.
+    const visible = (n: SceneNode) => !("visible" in n) || n.visible !== false;
+    const candidateTokens = ORDER.filter((t) => {
       const e = entries.get(t);
-      if (!e) continue;
-      const style = await nodeRule(e.node, e.parent, {
-        headings: headingsByToken.get(t) ?? new Map(),
-        semantic: opts.semantic,
-        addFont,
-        pageW: pageWByToken.get(t) ?? 0,
-        topBand,
-        inList,
-        interactive,
-      });
+      return e ? visible(e.node) : false;
+    });
+    if (candidateTokens.length === 0) return null;
+    const primaryToken = candidateTokens[0];
+
+    const styleByToken = new Map<Token, NodeStyle>();
+    for (const t of candidateTokens) {
+      const e = entries.get(t)!;
+      const style = await nodeRule(
+        e.node,
+        e.parent,
+        {
+          headings: headingsByToken.get(t) ?? new Map(),
+          semantic: opts.semantic,
+          addFont,
+          pageW: pageWByToken.get(t) ?? 0,
+          topBand,
+          inList,
+          interactive,
+        },
+        t === primaryToken,
+      );
       if (style) styleByToken.set(t, style);
     }
 
     const presentTokens = ORDER.filter((t) => styleByToken.has(t));
     if (presentTokens.length === 0) return null;
-    const primaryToken = presentTokens[0];
     const primary = styleByToken.get(primaryToken)!;
     const primaryNode = entries.get(primaryToken)!.node;
 

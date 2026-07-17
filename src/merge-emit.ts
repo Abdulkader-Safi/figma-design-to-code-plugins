@@ -10,7 +10,6 @@ import { STANDARD } from "./breakpoints";
 import { type MergedNode, diffRules, displayTransitions } from "./merge-model";
 import { toTailwind, fontSlug } from "./tailwind";
 import { fontLink, docShell } from "./document";
-import { escapeHtml } from "./values";
 
 const ORDER: Token[] = ["base", "sm", "md", "lg", "xl", "2xl"];
 const MIN_WIDTH: Record<Token, number> = {
@@ -35,9 +34,6 @@ export interface EmitOpts {
 function bgUtil(bg: string): string {
   return bg.startsWith("#") ? `bg-[${bg}]` : `bg-[${bg.replace(/\s+/g, "_")}]`;
 }
-
-// Keep the <br> convention the single-frame generator uses for newlines.
-const textInner = (s: string) => escapeHtml(s).replace(/\n/g, "<br>");
 
 // The root's pinned width becomes fluid and its fixed height is dropped so the
 // page grows with content instead of clamping to the base frame's size.
@@ -187,7 +183,8 @@ export function emitMerged(
     }
     if (unit.kind === "text") {
       const attrs = unit.tag === "a" ? ` href="${unit.href ?? "#"}"` : "";
-      return `${indent}<${unit.tag} class="${cls}"${attrs}>${textInner(unit.text ?? "")}</${unit.tag}>`;
+      // unit.text is already escaped/rendered HTML from the builder.
+      return `${indent}<${unit.tag} class="${cls}"${attrs}>${unit.text ?? ""}</${unit.tag}>`;
     }
     if (unit.kind === "asset") {
       return `${indent}<${unit.tag} class="${cls}">${unit.asset ?? ""}</${unit.tag}>`;
