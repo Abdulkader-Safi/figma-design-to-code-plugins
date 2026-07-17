@@ -8,7 +8,7 @@
     "build:js": "esbuild src/main.ts --bundle --outfile=code.js --target=es2020",
     "build:ui": "tailwindcss -i src/ui/styles.css -o dist/ui.css --minify && node scripts/build-ui.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "bun run test/gradient.ts && bun run test/layout.ts && bun run test/breakpoints.ts && bun run test/responsive.ts",
+    "test": "bun run test/gradient.ts && bun run test/layout.ts && bun run test/breakpoints.ts && bun run test/responsive.ts && bun run test/merge-model.ts",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "watch": "esbuild src/main.ts --bundle --outfile=code.js --target=es2020 --watch"
