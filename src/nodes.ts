@@ -3,6 +3,11 @@
 export const isAutoLayout = (n: SceneNode): boolean =>
   "layoutMode" in n && n.layoutMode !== "NONE";
 
+// Figma's "Ignore auto layout" toggle. The child drops out of its parent's flow
+// and keeps its own x/y, which is exactly CSS position: absolute.
+export const ignoresAutoLayout = (n: SceneNode): boolean =>
+  "layoutPositioning" in n && n.layoutPositioning === "ABSOLUTE";
+
 export const isVectorLike = (n: SceneNode): boolean =>
   n.type === "VECTOR" ||
   n.type === "BOOLEAN_OPERATION" ||

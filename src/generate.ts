@@ -6,6 +6,7 @@ import type { Rule } from "./types";
 import { solidFill, gradientFill, escapeHtml, round } from "./values";
 import {
   isAutoLayout,
+  ignoresAutoLayout,
   isVectorLike,
   isIconContainer,
   hasImageFill,
@@ -102,13 +103,19 @@ export async function generate(
     const rule: Rule = {};
     let hasBefore = false; // CSS mode: this node gets a full-bleed ::before rule
     let beforeUtils = ""; // Tailwind mode: the same bleed as before:* utilities
-    const absolute = parent !== null && !isAutoLayout(parent);
+    // Out of the flow either because the parent has no auto-layout at all, or
+    // because this child opted out of it ("Ignore auto layout" in Figma).
+    const absolute =
+      parent !== null && (!isAutoLayout(parent) || ignoresAutoLayout(node));
     // Direct children of a list become list items.
     const inList = parentTag === "ul" || parentTag === "ol";
     // Landmark bands (section/header/footer/main) only apply at the top level.
     const topBand = parent === root;
+    // Exported whole as one asset, so any rotation is baked into the asset.
+    const asSvg = isVectorLike(node) || isIconContainer(node);
+    const asImg = !asSvg && hasImageFill(node);
 
-    positionAndSize(node, parent, absolute, rule);
+    positionAndSize(node, parent, absolute, asSvg || asImg, rule);
     if (
       "opacity" in node &&
       typeof node.opacity === "number" &&
@@ -120,7 +127,7 @@ export async function generate(
     // Vectors and icons: inline the SVG, crisp and small. A container made only
     // of vector art (icon strokes, a glyph on a shape) is exported whole as one
     // SVG so multi-part icons render as designed instead of as broken pieces.
-    if (isVectorLike(node) || isIconContainer(node)) {
+    if (asSvg) {
       let svg = "";
       try {
         svg = await node.exportAsync({ format: "SVG_STRING" });
@@ -131,7 +138,7 @@ export async function generate(
     }
 
     // Image fills: export the node as a PNG and drop it in as an <img>.
-    if (hasImageFill(node)) {
+    if (asImg) {
       applyBoxDecoration(node, rule);
       try {
         const bytes = await node.exportAsync({
@@ -253,7 +260,13 @@ export async function generate(
       return `${indent}<${tag} class="${withBleed(emitClass(cls, rule, hasBefore))}"></${tag}>`;
     }
 
-    if (!isAutoLayout(node) && !rule.position) rule.position = "relative";
+    // An absolutely-placed child measures left/top from its nearest positioned
+    // ancestor, so any box holding one has to be that ancestor: a static frame
+    // (all its children are absolute) and an auto-layout frame holding an
+    // "ignore auto layout" child. Without this the child escapes to whatever
+    // outer box happens to be positioned and lands far from where it was drawn.
+    const anchors = !isAutoLayout(node) || kids.some(ignoresAutoLayout);
+    if (anchors && !rule.position) rule.position = "relative";
     const c = withBleed(emitClass(cls, rule, hasBefore));
 
     const childInteractive = interactive || tag === "a" || tag === "button";
