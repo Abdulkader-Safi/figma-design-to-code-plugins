@@ -265,6 +265,8 @@ function twUtil(k: string, v: string): string {
           : v === "auto"
             ? "h-auto"
             : `h-[${a}]`;
+    case "white-space":
+      return v === "nowrap" ? "whitespace-nowrap" : `[white-space:${a}]`;
     case "min-width":
       return parseFloat(v) === 0 ? "min-w-0" : `min-w-[${a}]`;
     case "min-height":

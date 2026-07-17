@@ -1,7 +1,7 @@
 // Headless self-check for positionAndSize (no framework). Run: bun run test/layout.ts
 // positionAndSize makes no figma.* runtime calls, so it runs outside Figma.
 import { positionAndSize } from "../src/layout";
-import { ignoresAutoLayout } from "../src/nodes";
+import { ignoresAutoLayout, isArcEllipse, isVectorLike, hugsText } from "../src/nodes";
 import type { Rule } from "../src/types";
 
 function assert(cond: boolean, msg: string) {
@@ -128,5 +128,33 @@ assert(
   "AUTO layoutPositioning stays in the flow",
 );
 assert(!ignoresAutoLayout({} as never as SceneNode), "no property means in the flow");
+
+// An ellipse is only a CSS box when it's a full, solid ellipse. Arc handles turn
+// it into a ring or a pie, which a border-radius: 50% div paints as a disc.
+const ellipse = (arc: object) =>
+  ({
+    type: "ELLIPSE",
+    arcData: { startingAngle: 0, endingAngle: Math.PI * 2, innerRadius: 0, ...arc },
+  }) as never as SceneNode;
+
+assert(!isArcEllipse(ellipse({})), "a plain full ellipse stays a rounded div");
+assert(isArcEllipse(ellipse({ innerRadius: 0.9 })), "a ring is an arc ellipse");
+assert(isArcEllipse(ellipse({ endingAngle: Math.PI })), "a half sweep is an arc ellipse");
+assert(isVectorLike(ellipse({ innerRadius: 0.9 })), "a ring exports as SVG");
+assert(!isVectorLike(ellipse({})), "a plain ellipse does not export as SVG");
+// Floating point drift on a full turn must not tip a plain ellipse into SVG.
+assert(
+  !isArcEllipse(ellipse({ endingAngle: Math.PI * 2 - 1e-12 })),
+  "a full turn tolerates float drift",
+);
+
+// Only Figma's "Auto width" text is exact-fit; the other modes wrap on purpose.
+const text = (mode: string) =>
+  ({ type: "TEXT", textAutoResize: mode }) as never as SceneNode;
+assert(hugsText(text("WIDTH_AND_HEIGHT")), "auto width hugs its glyphs");
+assert(!hugsText(text("HEIGHT")), "auto height wraps on purpose");
+assert(!hugsText(text("NONE")), "a fixed text box wraps on purpose");
+assert(!hugsText(text("TRUNCATE")), "a truncating text box is not a hug");
+assert(!hugsText({ type: "FRAME" } as never as SceneNode), "only TEXT hugs");
 
 console.log("layout: all checks passed");

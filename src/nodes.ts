@@ -8,12 +8,30 @@ export const isAutoLayout = (n: SceneNode): boolean =>
 export const ignoresAutoLayout = (n: SceneNode): boolean =>
   "layoutPositioning" in n && n.layoutPositioning === "ABSOLUTE";
 
+// Figma's ellipse carries "arc" handles: sweep it short of a full turn and it
+// becomes a pie slice, give it an inner radius and it becomes a ring. Neither is
+// a CSS box, so a solid border-radius: 50% div paints a filled disc over
+// whatever the ring was meant to frame. Those go out as SVG instead. A plain
+// full ellipse stays a rounded div and keeps its fills and image fills.
+const TURN = Math.PI * 2;
+export const isArcEllipse = (n: SceneNode): boolean =>
+  n.type === "ELLIPSE" &&
+  (n.arcData.innerRadius > 0 ||
+    Math.abs(n.arcData.endingAngle - n.arcData.startingAngle) < TURN - 1e-6);
+
 export const isVectorLike = (n: SceneNode): boolean =>
   n.type === "VECTOR" ||
   n.type === "BOOLEAN_OPERATION" ||
   n.type === "STAR" ||
   n.type === "LINE" ||
-  n.type === "POLYGON";
+  n.type === "POLYGON" ||
+  isArcEllipse(n);
+
+// A text node on Figma's "Auto width": its box is measured from the glyphs, so
+// it is exact-fit and single-line by construction. "Auto height" and the fixed
+// sizes are left alone, since their wrapping is the design's intent.
+export const hugsText = (n: SceneNode): boolean =>
+  n.type === "TEXT" && n.textAutoResize === "WIDTH_AND_HEIGHT";
 
 export const hasImageFill = (n: SceneNode): boolean =>
   "fills" in n &&

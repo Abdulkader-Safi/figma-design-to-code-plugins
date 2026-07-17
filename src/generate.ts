@@ -10,6 +10,7 @@ import {
   isVectorLike,
   isIconContainer,
   hasImageFill,
+  hugsText,
 } from "./nodes";
 import { headingMap, textTag, containerTag } from "./semantic";
 import { positionAndSize, applyLayout } from "./layout";
@@ -155,6 +156,16 @@ export async function generate(
 
     // Text.
     if (node.type === "TEXT") {
+      // An "Auto width" box was measured off the glyphs, so it fits the line
+      // exactly and has no slack. The browser measures text a hair differently
+      // (a 165px box here wants 167.6px), so pinning Figma's width wraps the
+      // line and spills it out of the pinned height. Figma isn't holding this
+      // box to a size either: let it fit its own text, and never wrap.
+      if (hugsText(node)) {
+        delete rule.width;
+        delete rule.height;
+        rule["white-space"] = "nowrap";
+      }
       // Node-level alignment always; font/size/color per segment below.
       rule["text-align"] = ALIGN[node.textAlignHorizontal] || "left";
 
