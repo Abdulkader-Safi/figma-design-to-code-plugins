@@ -205,9 +205,11 @@ async function paintImage(
   return null; // VIDEO, PATTERN, SHADER: no CSS form, and rasterising is the caller's job
 }
 
-// One overlay element standing in for one paint.
+// One overlay element standing in for one paint. `key` names the layer's role
+// rather than its position, so the responsive merge can line the same layer up
+// across frames even when one of them has no backdrop layer.
 export interface FillLayer {
-  className: string;
+  key: string; // "base" for the backdrop, otherwise the paint's index
   rule: Rule;
 }
 
@@ -226,7 +228,6 @@ export interface FillResult {
 // the trap this function exists to avoid.
 export async function fillStack(
   fills: readonly Paint[] | typeof figma.mixed,
-  className: string,
   resolve: ImageResolver,
   backdrop?: string | null,
 ): Promise<FillResult> {
@@ -257,7 +258,7 @@ export async function fillStack(
   // which is exactly how a dark textured band came out as a bright gradient.
   if (backdrop && paints.some((p) => needsOwnLayer(p))) {
     layers.push({
-      className: `${className}-fillbase`,
+      key: "base",
       rule: {
         position: "absolute",
         inset: "0",
@@ -294,7 +295,7 @@ export async function fillStack(
     }
     const blend = blendCss(p.blendMode);
     if (blend !== "normal") rule["mix-blend-mode"] = blend;
-    layers.push({ className: `${className}-fill${i}`, rule });
+    layers.push({ key: String(i), rule });
   }
 
   if (layers.length === 0) return { rule: {}, layers: [] };

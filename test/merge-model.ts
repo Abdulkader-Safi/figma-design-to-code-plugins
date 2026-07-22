@@ -8,28 +8,29 @@ function assert(cond: boolean, msg: string) {
 
 // cascadeDiff keeps only changed/added props.
 const b0 = { "font-size": "32px", color: "#fff" };
-const d = cascadeDiff(b0, { "font-size": "58px", color: "#fff" }, b0);
+const d = cascadeDiff(b0, { "font-size": "58px", color: "#fff" });
 assert(
   JSON.stringify(d) === JSON.stringify({ "font-size": "58px" }),
   `only font-size changed: ${JSON.stringify(d)}`,
 );
-assert(Object.keys(cascadeDiff({ a: "1" }, { a: "1" }, { a: "1" })).length === 0, "identical rules diff to empty");
-assert(cascadeDiff({}, { gap: "10px" }, {}).gap === "10px", "a new prop is a diff");
+assert(Object.keys(cascadeDiff({ a: "1" }, { a: "1" })).length === 0, "identical rules diff to empty");
+assert(cascadeDiff({}, { gap: "10px" }).gap === "10px", "a new prop is a diff");
 
 // A property in force from a smaller breakpoint but absent here must be reset,
 // or it leaks: a section pinned to the laptop width kept it on the desktop.
-const leak = cascadeDiff({ "align-self": "stretch", width: "1360px" }, { "align-self": "stretch" }, { "align-self": "stretch" });
+const leak = cascadeDiff({ "align-self": "stretch", width: "1360px" }, { "align-self": "stretch" });
 assert(leak.width === "initial", `dropped width resets to initial: ${JSON.stringify(leak)}`);
 assert(leak["align-self"] === undefined, "unchanged prop is not restated");
 
-// When base did set the property, the reset goes back to the base value.
-const back = cascadeDiff({ padding: "40px" }, { gap: "8px" }, { padding: "10px" });
-assert(back.padding === "10px" && back.gap === "8px", `reset to base value: ${JSON.stringify(back)}`);
-
-// Already sitting at the base value means nothing to emit.
+// A dropped property is RELEASED, not restored to base. The target rule is the
+// complete rule for that breakpoint, so a property missing from it is one this
+// frame does not want. Restoring base instead kept the mobile frame's pinned
+// width and height on the desktop layout.
+const back = cascadeDiff({ padding: "40px" }, { gap: "8px" });
+assert(back.padding === "initial" && back.gap === "8px", `released, not restored: ${JSON.stringify(back)}`);
 assert(
-  Object.keys(cascadeDiff({ padding: "10px" }, {}, { padding: "10px" })).length === 0,
-  "no reset when already at the base value",
+  cascadeDiff({ height: "566px" }, {}).height === "initial",
+  "a height the larger frame hugs is released even when base pinned it",
 );
 
 // matchChildren: by name first. Fakes carry the fields the matcher reads.

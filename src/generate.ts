@@ -262,11 +262,11 @@ export async function generate(
     // matching Figma's bottom-to-top fills array.
     const fill =
       "fills" in node
-        ? await fillStack(node.fills, cls, images.resolve, backdrop)
+        ? await fillStack(node.fills, images.resolve, backdrop)
         : { rule: {}, layers: [] };
     Object.assign(rule, fill.rule);
     const layerHtml = (fill.layers as FillLayer[]).map(
-      (l) => `${indent}  <div class="${emitClass(l.className, l.rule)}"></div>`,
+      (l) => `${indent}  <div class="${emitClass(`${cls}-fill${l.key}`, l.rule)}"></div>`,
     );
     const bg = typeof rule.background === "string" ? rule.background : null;
     const childBackdrop = bg && bg.startsWith("#") ? bg : backdrop;
@@ -606,10 +606,11 @@ export async function nodeRule(
     "fills" in node
       ? await fillStack(
           node.fills,
-          "fill",
-          // Only the primary frame pays for the export; the other tokens reuse
-          // the same paint and need the rule, not the pixels.
-          exportAssets && ctx.images ? ctx.images.resolve : async () => null,
+          // Not gated on exportAssets, unlike the SVG and PNG exports above. The
+          // store caches by image hash, so a repeat costs nothing, and skipping
+          // it left the background existing only at the primary breakpoint and
+          // disappearing at the others.
+          ctx.images ? ctx.images.resolve : async () => null,
           ctx.backdrop,
         )
       : { rule: {}, layers: [] };

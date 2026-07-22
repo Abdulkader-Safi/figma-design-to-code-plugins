@@ -165,7 +165,7 @@ export function emitMerged(
     let effective: Rule = { ...baseRule };
     for (const t of tokens) {
       if (t === "base") continue;
-      const diff: Rule = unit.presentAt.includes(t) ? cascadeDiff(effective, ruleAt(t), baseRule) : {};
+      const diff: Rule = unit.presentAt.includes(t) ? cascadeDiff(effective, ruleAt(t)) : {};
       if (unit.presentAt.includes(t)) effective = { ...ruleAt(t) };
       if (displayMap[t]) diff.display = displayMap[t];
       steps.push({ token: t, diff });

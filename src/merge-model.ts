@@ -26,23 +26,27 @@ export interface MergedNode {
   href?: string;
 }
 
-// What a breakpoint must declare to reach `target`, given `effective` (what the
-// smaller breakpoints already put in force) and `base` (the unprefixed rule).
+// What a breakpoint must declare to reach `target`, given `effective`: what the
+// smaller breakpoints already put in force.
 //
 // The second loop is the part that is easy to miss. A mobile-first cascade only
 // ever adds, so a property one breakpoint sets and the next one does not stays
-// in force: a section pinned to width 1360px for the laptop frame kept that
-// width in the desktop layout, where it should stretch. Anything dropped is put
-// back to its base value, or to `initial` when base never set it.
-export function cascadeDiff(effective: Rule, target: Rule, base: Rule): Rule {
+// in force: a section pinned to 1360px for the laptop frame kept that width in
+// the desktop layout, where it should stretch.
+export function cascadeDiff(effective: Rule, target: Rule): Rule {
   const out: Rule = {};
   for (const k of Object.keys(target)) {
     if (!(k in effective) || String(effective[k]) !== String(target[k])) out[k] = target[k];
   }
   for (const k of Object.keys(effective)) {
     if (k in target) continue;
-    const want = k in base ? base[k] : "initial";
-    if (String(effective[k]) !== String(want)) out[k] = want;
+    // Released, not restored to the base value. `target` is the complete rule
+    // for this breakpoint, so a property missing from it is a property this
+    // frame does not want. Falling back to base kept the mobile frame's pinned
+    // height and width on the desktop layout, where both should be automatic:
+    // the navbar stayed 390px wide at 1920 and every section kept its phone
+    // height.
+    out[k] = "initial";
   }
   return out;
 }

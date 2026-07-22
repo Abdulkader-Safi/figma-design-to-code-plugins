@@ -21,7 +21,9 @@ The part before the last ` - ` is the shared prefix. Frames that share it are tr
 
 ## Select and export
 
-Select two or more frames of the same page and export as usual. The status line confirms what it found, for example `3 frames -> base 390, md, xl`. The download name is the shared prefix.
+Select two or more frames of the same page and export as usual. The status line confirms what it found, for example `3 frames -> base 390, lg, 2xl`. The download name is the shared prefix, and the output is the same shape as a single-frame export: a zip of `index.html`, `styles.css` and `images/` when the page has images, otherwise one file.
+
+Each layer is styled from the frame it belongs to, so a property one frame pins and a larger one leaves automatic is released at that breakpoint rather than carried up. Backgrounds, including stacked fills with blend modes, come through at every breakpoint.
 
 You do not need all three sizes. Any two or more work:
 
