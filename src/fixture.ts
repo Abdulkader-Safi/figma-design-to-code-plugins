@@ -7,6 +7,8 @@
 // box, never as base64: a fixture is for checking structure, layout and style,
 // and embedding PNGs would make it unusable (a real page runs to megabytes).
 
+import { isVectorLike, isIconContainer } from "./nodes";
+
 // figma.mixed is a symbol, so it cannot survive JSON. It travels as this marker
 // and the replay side turns it back into the symbol.
 export const MIXED_MARKER = "__figma_mixed__";
@@ -181,7 +183,11 @@ export function dumpNode(node: SceneNode): FixtureNode {
     }
   }
 
-  if ("children" in node) out.children = node.children.map(dumpNode);
+  // A node the exporter flattens into one SVG is never walked into, so its
+  // subtree would be dead weight. One hero illustration is 1686 paths; keeping
+  // them took a dump from a few megabytes to fifty.
+  const flattened = isVectorLike(node) || isIconContainer(node);
+  if ("children" in node && !flattened) out.children = node.children.map(dumpNode);
   return out;
 }
 
