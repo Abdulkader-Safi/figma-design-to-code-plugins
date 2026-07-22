@@ -5,7 +5,7 @@ description: What Design to HTML does, what it reads from your Figma file, and h
 
 # Introduction
 
-Design to HTML is a Figma plugin. You select a frame, and it gives you one self-contained HTML file that keeps the layout, colors, typography, and fonts. You can copy the code or download the file and open it in any browser.
+Design to HTML is a Figma plugin. You select a frame, and it gives you working HTML that keeps the layout, colors, typography, and fonts. You can copy the code, or download it: a page with images comes out as a zip of `index.html`, `styles.css` and an `images/` folder, and a page without images as a single self-contained file.
 
 The point is to skip the slow part of handoff. Instead of measuring spacing by hand and retyping styles, you export the frame and start from working markup.
 
@@ -18,7 +18,7 @@ The plugin walks the frame you selected, top to bottom, and turns each layer int
 - **Fills** come through as solid colors or gradients. Linear gradients keep their real angle. Radial and angular gradients export with all their stops.
 - **Text** keeps its content, font family, weight, size, color, alignment, line height, letter spacing, and case.
 - **Vectors and icons** inline as SVG, so a multi-part icon renders as one piece.
-- **Image fills** export as PNG data URIs, embedded right in the file.
+- **Image fills** export as PNG files under `images/`, written once each however many layers use them. Stacked fills keep their opacity, blend modes and image adjustments.
 - **Fonts** used by your text are emitted as a Google Fonts link. Families that are not on Google fall back to a system font.
 
 ## What you decide

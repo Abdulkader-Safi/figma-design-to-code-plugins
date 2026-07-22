@@ -32,7 +32,7 @@ const visibleChildren = (n: SceneNode): SceneNode[] =>
 
 export async function buildMergedTree(
   variants: FrameVariant[],
-  opts: { semantic: boolean; images?: ImageStore },
+  opts: { semantic: boolean; images?: ImageStore; backdrop?: string | null },
   addFont: (family: string, weight: number) => void,
 ): Promise<MergedNode> {
   const headingsByToken = new Map<Token, Map<number, string>>();
@@ -84,6 +84,7 @@ export async function buildMergedTree(
           headings: headingsByToken.get(t) ?? new Map(),
           semantic: opts.semantic,
           images: opts.images,
+          backdrop: opts.backdrop,
           addFont,
           pageW: pageWByToken.get(t) ?? 0,
           topBand,

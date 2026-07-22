@@ -133,6 +133,9 @@ export async function generate(
     parentTag: string,
     interactive: boolean,
     inherited: Rule = {},
+    // The nearest solid colour painted behind this node. Blend modes composite
+    // against it, so it has to travel down the tree.
+    backdrop: string | null = pageBg,
   ): Promise<string> {
     if ("visible" in node && node.visible === false) return "";
 
@@ -258,11 +261,15 @@ export async function generate(
     // layer. Emitted before the real children so later siblings paint on top,
     // matching Figma's bottom-to-top fills array.
     const fill =
-      "fills" in node ? await fillStack(node.fills, cls, images.resolve) : { rule: {}, layers: [] };
+      "fills" in node
+        ? await fillStack(node.fills, cls, images.resolve, backdrop)
+        : { rule: {}, layers: [] };
     Object.assign(rule, fill.rule);
     const layerHtml = (fill.layers as FillLayer[]).map(
       (l) => `${indent}  <div class="${emitClass(l.className, l.rule)}"></div>`,
     );
+    const bg = typeof rule.background === "string" ? rule.background : null;
+    const childBackdrop = bg && bg.startsWith("#") ? bg : backdrop;
 
     // The page root must not clip: a fixed-width overflow:hidden root would trap
     // every full-width section inside the design column and cancel the bleed.
@@ -341,7 +348,7 @@ export async function generate(
       const extra = negativeGap
         ? { ...overlapMargin(node, i), ...overlapZIndex(node, i, kids.length) }
         : {};
-      const h = await build(kids[i], node, depth + 1, tag, childInteractive, extra);
+      const h = await build(kids[i], node, depth + 1, tag, childInteractive, extra, childBackdrop);
       if (h) childHtml.push(h);
     }
     return `${indent}<${tag} class="${c}">\n${childHtml.join("\n")}\n${indent}</${tag}>`;
@@ -434,7 +441,11 @@ export async function generateResponsive(
       ? solidFill(base.fills) || gradientFill(base.fills)
       : null;
 
-  const tree = await buildMergedTree(variants, { semantic: opts.semantic, images }, addFont);
+  const tree = await buildMergedTree(
+    variants,
+    { semantic: opts.semantic, images, backdrop: pageBg },
+    addFont,
+  );
   const out = emitMerged(tree, {
     title: parseFrameName(base.name).prefix || base.name,
     tailwind: opts.tailwind,
@@ -472,6 +483,7 @@ export interface NodeCtx {
   topBand: boolean; // parent is the frame root (landmark bands apply)
   inList: boolean; // parent is ul/ol (children become li)
   images?: ImageStore; // shared image block; absent means skip image fills
+  backdrop?: string | null; // nearest solid colour behind the node, for blending
   interactive: boolean; // inside an a/button (text links are suppressed)
 }
 
@@ -598,6 +610,7 @@ export async function nodeRule(
           // Only the primary frame pays for the export; the other tokens reuse
           // the same paint and need the rule, not the pixels.
           exportAssets && ctx.images ? ctx.images.resolve : async () => null,
+          ctx.backdrop,
         )
       : { rule: {}, layers: [] };
   Object.assign(rule, fill.rule);

@@ -22,7 +22,12 @@ export function installFigmaStub(): void {
     // bytes, so any hash yields the same stub: enough to prove the layer is
     // emitted with the right sizing, opacity and blend mode.
     getImageByHash: (hash: string) =>
-      hash ? { getBytesAsync: async () => new Uint8Array([0, 0, 0]) } : null,
+      hash
+        ? {
+            getBytesAsync: async () => new Uint8Array([0, 0, 0]),
+            getSizeAsync: async () => ({ width: 32, height: 32 }),
+          }
+        : null,
   };
 }
 installFigmaStub();

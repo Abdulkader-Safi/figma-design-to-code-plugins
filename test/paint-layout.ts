@@ -68,13 +68,14 @@ const solid = (r: number, g: number, b: number, o = 1, blend?: string) => ({
   opacity: o,
   ...(blend ? { blendMode: blend } : {}),
 });
-const image = (o = 1, blend?: string) => ({
+const image = (o = 1, blend?: string, extra: Record<string, unknown> = {}) => ({
   type: "IMAGE",
   visible: true,
   scaleMode: "FILL",
   imageHash: "abc",
   opacity: o,
   ...(blend ? { blendMode: blend } : {}),
+  ...extra,
 });
 
 const html = async (frame: Fake) => {
@@ -92,10 +93,23 @@ const overlaySection = {
   width: 1440,
   height: 300,
   layoutMode: "VERTICAL",
-  fills: [image(1, "OVERLAY"), image(0.6), solid(0.1, 0.1, 0.1, 0.2, "COLOR")],
+  // Exactly the stack from the dumped Text Container: a desaturated base under
+  // a repeating pattern under a green colour wash.
+  fills: [
+    image(1, "OVERLAY", { filters: { saturation: -1, contrast: 0, exposure: 0 } }),
+    image(0.6, undefined, { scaleMode: "TILE", scalingFactor: 1 }),
+    solid(0.1, 0.1, 0.1, 0.2, "COLOR"),
+  ],
   children: [text("Heading", "Our Services")],
 };
-const overlay = await html({ ...BOX, name: "Page", width: 1440, layoutMode: "VERTICAL", children: [overlaySection] });
+const overlay = await html({
+  ...BOX,
+  name: "Page",
+  width: 1440,
+  layoutMode: "VERTICAL",
+  fills: [solid(0.047, 0.043, 0.039)],
+  children: [overlaySection],
+});
 assert(overlay.includes("Our Services"), "the heading inside an image-filled container survives");
 assert(!/<img class="text-container/.test(overlay), "the container is not replaced by an img");
 
@@ -110,6 +124,47 @@ assert(overlay.includes("mix-blend-mode: overlay"), "the OVERLAY paint keeps its
 assert(overlay.includes("mix-blend-mode: color"), "the COLOR paint keeps its blend mode");
 assert(overlay.includes("opacity: 0.6"), "the 60% image keeps its own opacity");
 assert(overlay.includes("isolation: isolate"), "blending is contained to the node");
+
+// Figma's per-image adjustments. saturation -1 is a fully desaturated texture;
+// without it the layer shipped at full colour and the band read bright purple
+// where the design is grey-green.
+assert(overlay.includes("saturate(0)"), "a desaturated image keeps its filter");
+
+// A tile repeats at its own size. background-size is relative to the BOX, so a
+// percentage stretches one copy across the element instead of repeating it.
+assert(
+  overlay.includes("background-size: 32px 32px") && overlay.includes("background-repeat: repeat"),
+  "a TILE paint repeats at its natural size",
+);
+assert(!/background-size: 100%/.test(overlay), "a tile is never stretched to the box");
+
+// A blended stack needs something to blend against. The node isolates, so its
+// backdrop is transparent unless the page colour is painted underneath, and an
+// OVERLAY image over nothing stays at full brightness: a dark textured band
+// exported as a bright gradient.
+const base = [...overlay.matchAll(/class="(text-container-\d+-fillbase)"/g)].map((m) => m[1]);
+assert(base.length === 1, `a blended stack gets a backdrop layer, got ${base.length}`);
+const baseRule = overlay.slice(overlay.indexOf(`.${base[0]} {`));
+assert(
+  baseRule.slice(0, 220).includes("background: #0c0b0a"),
+  `the backdrop layer carries the page colour:\n${baseRule.slice(0, 220)}`,
+);
+// Compared inside the body: the stylesheet in <head> mentions every class too.
+const body = overlay.slice(overlay.indexOf("<body"));
+assert(
+  body.indexOf(`class="${base[0]}"`) < body.indexOf(`class="${fillClasses[0]}"`),
+  "the backdrop sits under every paint",
+);
+
+// No blend modes means nothing to composite against, so no extra element.
+const noBlend = await html({
+  ...BOX,
+  name: "Plain",
+  layoutMode: "VERTICAL",
+  fills: [solid(1, 0, 0, 0.5), solid(0, 0, 1)],
+  children: [text("T", "hi")],
+});
+assert(!noBlend.includes("-fillbase"), "an unblended stack needs no backdrop layer");
 
 // A leaf with an image fill is still an <img>: that case was never broken.
 const avatar = { ...BOX, name: "Profile", width: 48, height: 48, fills: [image()] };

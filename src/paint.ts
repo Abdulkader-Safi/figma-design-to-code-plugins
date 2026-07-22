@@ -12,7 +12,7 @@
 // stack comes out exact.
 
 import type { Rule } from "./types";
-import { rgba, gradientPaintCss } from "./values";
+import { rgba, round, gradientPaintCss } from "./values";
 
 // Figma BlendMode -> CSS. PASS_THROUGH is not a blend mode (it means "do not
 // isolate"), and the two Plus modes have no cross-browser equivalent, so all
@@ -46,9 +46,17 @@ const visiblePaints = (fills: readonly Paint[] | typeof figma.mixed): Paint[] =>
 const needsOwnLayer = (p: Paint): boolean =>
   blendCss(p.blendMode) !== "normal" || (p.type === "IMAGE" && (p.opacity ?? 1) < 1);
 
-// The CSS value for an image paint. Returns null when the image is missing or
-// cannot be decoded, so the layer is dropped rather than emitting a broken url().
-export type ImageResolver = (paint: ImagePaint) => Promise<string | null>;
+// A resolved image: its CSS url() and its natural pixel size, which a tiling
+// paint needs in order to repeat at the right scale.
+export interface ResolvedImage {
+  ref: string;
+  width: number;
+  height: number;
+}
+
+// Returns null when the image is missing or cannot be decoded, so the layer is
+// dropped rather than emitting a broken url().
+export type ImageResolver = (paint: ImagePaint) => Promise<ResolvedImage | null>;
 
 // One image file in the exported bundle.
 export interface Asset {
@@ -57,7 +65,7 @@ export interface Asset {
 }
 
 export interface ImageStore {
-  resolve: ImageResolver; // paint -> url("images/img-N.png")
+  resolve: ImageResolver; // paint -> its file reference and natural size
   addBytes(bytes: Uint8Array): string; // already-rendered PNG -> its path
   assets(): Asset[];
   bytes(): number;
@@ -77,7 +85,7 @@ export interface ImageStoreOpts {
 // Each distinct image is fetched once however many nodes paint with it; in one
 // real page a single hero texture was painted by six.
 export function createImageStore(opts: ImageStoreOpts = {}): ImageStore {
-  const byHash = new Map<string, string | null>(); // hash -> url() reference
+  const byHash = new Map<string, ResolvedImage | null>();
   const files: Asset[] = [];
   let total = 0;
 
@@ -94,16 +102,25 @@ export function createImageStore(opts: ImageStoreOpts = {}): ImageStore {
     const seen = byHash.get(hash);
     if (seen !== undefined) return seen;
 
-    let ref: string | null = null;
+    let out: ResolvedImage | null = null;
     try {
       const img = figma.getImageByHash(hash);
-      if (img) ref = `url("${store(await img.getBytesAsync())}")`;
+      if (img) {
+        // Natural size is what a tiling paint repeats at, so it travels with the
+        // reference rather than being guessed from the node's box.
+        const size = await img.getSizeAsync();
+        out = {
+          ref: `url("${store(await img.getBytesAsync())}")`,
+          width: size.width,
+          height: size.height,
+        };
+      }
     } catch {
-      ref = null;
+      out = null;
     }
-    byHash.set(hash, ref);
+    byHash.set(hash, out);
     opts.onProgress?.(files.length, total);
-    return ref;
+    return out;
   };
 
   return {
@@ -120,29 +137,58 @@ export function createImageStore(opts: ImageStoreOpts = {}): ImageStore {
 
 // How an image paint sits in its box. CROP is driven by imageTransform, which
 // the API docs do not pin down; cover is the closest safe default.
-function imageSizing(paint: ImagePaint): Rule {
+function imageSizing(paint: ImagePaint, img: ResolvedImage): Rule {
   switch (paint.scaleMode) {
     case "FIT":
-      return { "background-size": "contain", "background-repeat": "no-repeat", "background-position": "center" };
+      return {
+        "background-size": "contain",
+        "background-repeat": "no-repeat",
+        "background-position": "center",
+      };
     case "TILE": {
+      // A tile repeats at its own size, scaled by scalingFactor. Percentages are
+      // relative to the BOX, so `background-size: 100%` stretches one copy
+      // across the whole element instead of repeating a small pattern.
       const f = paint.scalingFactor ?? 1;
-      return { "background-size": `${Math.round(f * 100)}%`, "background-repeat": "repeat" };
+      const w = Math.max(1, Math.round(img.width * f));
+      const h = Math.max(1, Math.round(img.height * f));
+      return { "background-size": `${w}px ${h}px`, "background-repeat": "repeat" };
     }
     default:
-      return { "background-size": "cover", "background-repeat": "no-repeat", "background-position": "center" };
+      return {
+        "background-size": "cover",
+        "background-repeat": "no-repeat",
+        "background-position": "center",
+      };
   }
+}
+
+// Figma's per-image adjustments. Only three have a CSS analogue; temperature,
+// tint, highlights and shadows do not, and are left alone rather than faked.
+// Ranges run -1..1 around a neutral 0, so each maps to a 1 + value multiplier.
+function imageFilter(paint: ImagePaint): string | null {
+  const f = paint.filters;
+  if (!f) return null;
+  const parts: string[] = [];
+  if (f.saturation) parts.push(`saturate(${round(1 + f.saturation)})`);
+  if (f.contrast) parts.push(`contrast(${round(1 + f.contrast)})`);
+  if (f.exposure) parts.push(`brightness(${round(1 + f.exposure)})`);
+  return parts.length ? parts.join(" ") : null;
 }
 
 // The CSS image value for one paint, with its opacity folded in where that is
 // exact (solids and gradients carry alpha per stop). Null when the paint has no
 // CSS form.
-async function paintImage(p: Paint, resolve: ImageResolver): Promise<string | null> {
+async function paintImage(
+  p: Paint,
+  resolve: ImageResolver,
+): Promise<{ image: string; resolved?: ResolvedImage } | null> {
   const o = p.opacity ?? 1;
   if (p.type === "SOLID") {
     const c = rgba(p.color, o);
     // A two-stop gradient, not background-color: only an image value can take
     // part in a layer list, and background-color always paints underneath.
-    return `linear-gradient(${c}, ${c})`;
+    return { image: `linear-gradient(${c}, ${c})` };
   }
   if (
     p.type === "GRADIENT_LINEAR" ||
@@ -150,10 +196,12 @@ async function paintImage(p: Paint, resolve: ImageResolver): Promise<string | nu
     p.type === "GRADIENT_ANGULAR" ||
     p.type === "GRADIENT_DIAMOND"
   ) {
-    return gradientPaintCss(p, o);
+    return { image: gradientPaintCss(p, o) };
   }
-  // Already a var() reference into the shared image block, not a raw url().
-  if (p.type === "IMAGE") return resolve(p);
+  if (p.type === "IMAGE") {
+    const r = await resolve(p);
+    return r ? { image: r.ref, resolved: r } : null;
+  }
   return null; // VIDEO, PATTERN, SHADER: no CSS form, and rasterising is the caller's job
 }
 
@@ -180,6 +228,7 @@ export async function fillStack(
   fills: readonly Paint[] | typeof figma.mixed,
   className: string,
   resolve: ImageResolver,
+  backdrop?: string | null,
 ): Promise<FillResult> {
   const paints = visiblePaints(fills);
   if (paints.length === 0) return { rule: {}, layers: [] };
@@ -190,12 +239,36 @@ export async function fillStack(
     if (only.type === "SOLID") return { rule: { background: rgba(only.color, only.opacity ?? 1) }, layers: [] };
     const img = await paintImage(only, resolve);
     if (!img) return { rule: {}, layers: [] };
-    const rule: Rule = { background: img };
-    if (only.type === "IMAGE") Object.assign(rule, imageSizing(only));
+    const rule: Rule = { background: img.image };
+    if (only.type === "IMAGE" && img.resolved) {
+      Object.assign(rule, imageSizing(only, img.resolved));
+      const filter = imageFilter(only);
+      if (filter) rule.filter = filter;
+    }
     return { rule, layers: [] };
   }
 
   const layers: FillLayer[] = [];
+
+  // What the bottom paint blends against. In Figma that is whatever sits behind
+  // the node; here the node isolates, so without this the backdrop is
+  // transparent and a blend mode has nothing to work on. An OVERLAY image over a
+  // near-black page reads dark, and over nothing it stays at full brightness --
+  // which is exactly how a dark textured band came out as a bright gradient.
+  if (backdrop && paints.some((p) => needsOwnLayer(p))) {
+    layers.push({
+      className: `${className}-fillbase`,
+      rule: {
+        position: "absolute",
+        inset: "0",
+        "border-radius": "inherit",
+        "pointer-events": "none",
+        "z-index": "-1",
+        background: backdrop,
+      },
+    });
+  }
+
   for (let i = 0; i < paints.length; i++) {
     const p = paints[i];
     const img = await paintImage(p, resolve);
@@ -208,12 +281,16 @@ export async function fillStack(
       // Behind the node's own content but above its background, because the node
       // isolates. Without isolation these would slide behind the background too.
       "z-index": "-1",
-      background: img,
+      background: img.image,
     };
-    if (p.type === "IMAGE") {
-      Object.assign(rule, imageSizing(p));
+    if (p.type === "IMAGE" && img.resolved) {
+      Object.assign(rule, imageSizing(p, img.resolved));
       const o = p.opacity ?? 1;
       if (o < 1) rule.opacity = String(Math.round(o * 100) / 100);
+      // Figma's per-image adjustments, e.g. a fully desaturated texture that
+      // reads grey in the design and shipped at full colour without this.
+      const filter = imageFilter(p);
+      if (filter) rule.filter = filter;
     }
     const blend = blendCss(p.blendMode);
     if (blend !== "normal") rule["mix-blend-mode"] = blend;

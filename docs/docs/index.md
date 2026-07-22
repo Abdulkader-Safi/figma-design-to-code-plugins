@@ -1,12 +1,12 @@
 ---
 title: Design to HTML
-description: A Figma plugin that exports a selected frame to one self-contained HTML file, keeping the layout, colors, typography, and fonts. Export as plain CSS or Tailwind.
+description: A Figma plugin that exports a selected frame to working HTML and CSS, keeping the layout, colors, typography, and fonts. Export as plain CSS or Tailwind.
 pageType: home
 
 hero:
   name: Design to HTML
   text: Your Figma frame, as clean HTML
-  tagline: Select a frame and get one self-contained HTML file. Real layout, real semantics, plain CSS or Tailwind. No handoff back-and-forth.
+  tagline: Select a frame and get working HTML back. Real layout, real semantics, plain CSS or Tailwind. No handoff back-and-forth.
   image:
     src: /logo.png
     alt: Design to HTML
@@ -35,7 +35,7 @@ features:
     icon: 🎨
     link: /guide/getting-started
   - title: Icons stay crisp
-    details: Vectors and icons inline as SVG so multi-part icons render as designed. Image fills export as PNG data URIs, right in the file.
+    details: Vectors and icons inline as SVG so multi-part icons render as designed. Image fills come out as PNG files in an images folder, each written once.
     icon: ✒️
     link: /guide/exporting
   - title: One file, ready to ship
