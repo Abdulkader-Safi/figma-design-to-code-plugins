@@ -21,7 +21,7 @@ import {
   NEGATIVE_GAP,
 } from "./layout";
 import { applyBoxDecoration } from "./decoration";
-import { fillStack, imageResolver, type FillLayer } from "./paint";
+import { fillStack, createImageStore, type FillLayer, type ImageStore } from "./paint";
 import { styleRule, ALIGN } from "./text";
 import { toTailwind, fontSlug } from "./tailwind";
 import { fontLink, docShell } from "./document";
@@ -44,12 +44,26 @@ function bleedBefore(bg: string): string {
   );
 }
 
+export interface GenerateOpts {
+  semantic: boolean;
+  tailwind: boolean;
+  // Called as images are inlined, so a large document reports progress instead
+  // of looking frozen.
+  onProgress?: (message: string) => void;
+}
+
 export async function generate(
   root: SceneNode,
-  opts: { semantic: boolean; tailwind: boolean },
-): Promise<{ combined: string; html: string; css: string }> {
+  opts: GenerateOpts,
+): Promise<{ combined: string; html: string; css: string; note?: string }> {
   const cssRules: string[] = [];
   const fonts = new Map<string, Set<number>>(); // family -> weights
+  // Distinct images for this document. Each is encoded once and referenced by
+  // custom property, so a texture painted by six nodes is inlined once.
+  const images = createImageStore({
+    onProgress: (done, bytes) =>
+      opts.onProgress?.(`Inlining images: ${done} (${Math.round(bytes / 1048576)} MB)`),
+  });
   let counter = 0;
 
   // The page width and background drive full-width sections: the surround gets
@@ -232,7 +246,7 @@ export async function generate(
     // layer. Emitted before the real children so later siblings paint on top,
     // matching Figma's bottom-to-top fills array.
     const fill =
-      "fills" in node ? await fillStack(node.fills, cls, imageResolver) : { rule: {}, layers: [] };
+      "fills" in node ? await fillStack(node.fills, cls, images.resolve) : { rule: {}, layers: [] };
     Object.assign(rule, fill.rule);
     const layerHtml = (fill.layers as FillLayer[]).map(
       (l) => `${indent}  <div class="${emitClass(l.className, l.rule)}"></div>`,
@@ -324,6 +338,13 @@ export async function generate(
   const body = await build(root, null, 3, "", false);
   const links = fontLink(fonts);
 
+  // Never let a cap pass silently: if the budget stopped an image being inlined,
+  // say so rather than shipping a document that quietly lost a background.
+  const imageNote = (): string | undefined =>
+    images.skipped() > 0
+      ? `${images.skipped()} image${images.skipped() === 1 ? "" : "s"} left out: the document hit its size limit.`
+      : undefined;
+
   // Tailwind mode: every style is a utility. The v4 browser CDN builds the
   // stylesheet at runtime (its preflight covers the resets). The only non-utility
   // CSS is the @theme fonts and the line-height reset, both Tailwind config.
@@ -340,18 +361,26 @@ export async function generate(
     // never had, which loosens every AUTO (unset) line-height and drifts from
     // the design. Reset to normal in @layer base so the utilities layer's
     // explicit leading-[…] still wins; only AUTO nodes fall back to normal.
-    const twConfig = `${theme}  @layer base { * { line-height: normal; } }`;
+    const imageBlock = images.declarations().length
+      ? `  :root {\n${images.declarations().map((d) => `    ${d}`).join("\n")}\n  }\n`
+      : "";
+    const twConfig = `${theme}${imageBlock}  @layer base { * { line-height: normal; } }`;
     const bodyClass = `flex justify-center${pageBg ? ` ${bgUtil(pageBg)}` : ""}`;
     const head =
       `  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>\n` +
       `  <style type="text/tailwindcss">\n${twConfig}\n  </style>`;
     const doc = docShell(root.name, links, head, body, bodyClass);
-    return { combined: doc, html: doc, css: "" };
+    return { combined: doc, html: doc, css: "", note: imageNote() };
   }
 
   const bodyRule = `body { display: flex; justify-content: center;${pageBg ? ` background: ${pageBg};` : ""} }`;
 
+  const imageBlock = images.declarations().length
+    ? `:root {\n${images.declarations().map((d) => `  ${d}`).join("\n")}\n}\n\n`
+    : "";
+
   const stylesheet =
+    imageBlock +
     "* { margin: 0; padding: 0; box-sizing: border-box; }\n" +
     // Strip user-agent chrome so a semantic <button>/<a> is painted only by the
     // node's own styles (no buttonface fill, no outset border, no link blue).
@@ -368,6 +397,7 @@ export async function generate(
     combined: docShell(root.name, links, styleBlock, body),
     html: docShell(root.name, links, linkBlock, body),
     css: stylesheet,
+    note: imageNote(),
   };
 }
 
@@ -419,6 +449,7 @@ export interface NodeCtx {
   pageW: number; // the containing frame's width, for full-bleed detection
   topBand: boolean; // parent is the frame root (landmark bands apply)
   inList: boolean; // parent is ul/ol (children become li)
+  images?: ImageStore; // shared image block; absent means skip image fills
   interactive: boolean; // inside an a/button (text links are suppressed)
 }
 
@@ -539,7 +570,7 @@ export async function nodeRule(
   // caller; here they only need their rules and their order.
   const fill =
     "fills" in node
-      ? await fillStack(node.fills, "fill", exportAssets ? imageResolver : async () => null)
+      ? await fillStack(node.fills, "fill", ctx.images ? ctx.images.resolve : async () => null)
       : { rule: {}, layers: [] };
   Object.assign(rule, fill.rule);
   delete rule[NEGATIVE_GAP];

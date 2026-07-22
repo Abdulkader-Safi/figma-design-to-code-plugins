@@ -221,14 +221,27 @@
     }
 
     // --- render + actions ---
+    // Highlighting walks the whole string. A page with inlined images runs to
+    // tens of megabytes, and colouring that locks the panel for minutes, so past
+    // this size the preview is skipped. Copy and download are unaffected.
+    const PREVIEW_LIMIT = 2 * 1024 * 1024;
+
     function render() {
         document
             .querySelectorAll("#tabs .tab")
             .forEach((t) =>
                 t.classList.toggle("active", t.dataset.mode === state.mode),
             );
-        $("output").innerHTML =
-            state.mode === "css" ? hlCSS(raw()) : hlHTML(raw());
+        const src = raw();
+        if (src.length > PREVIEW_LIMIT) {
+            $("output").textContent =
+                "Preview skipped: " +
+                Math.round(src.length / 1048576) +
+                " MB of output, mostly inlined images.\nUse Copy or Download to get the file.";
+        } else {
+            $("output").innerHTML =
+                state.mode === "css" ? hlCSS(src) : hlHTML(src);
+        }
         $("output").scrollTop = 0;
         $("download").textContent = "Download ." + ext();
     }
@@ -312,7 +325,9 @@
     onmessage = (e) => {
         const msg = e.data.pluginMessage;
         if (!msg) return;
-        if (msg.type === "error") {
+        if (msg.type === "progress") {
+            setStatus(msg.message);
+        } else if (msg.type === "error") {
             setStatus(msg.message, true);
             show(false);
         } else if (msg.type === "fixture") {

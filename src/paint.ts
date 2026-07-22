@@ -46,22 +46,75 @@ const visiblePaints = (fills: readonly Paint[] | typeof figma.mixed): Paint[] =>
 const needsOwnLayer = (p: Paint): boolean =>
   blendCss(p.blendMode) !== "normal" || (p.type === "IMAGE" && (p.opacity ?? 1) < 1);
 
-// PNG bytes for an image paint, as a data URI. Returns null when the image is
-// missing or the host cannot decode it, so the layer is dropped rather than
-// emitting a broken url().
+// The CSS value for an image paint. Returns null when the image is missing or
+// cannot be decoded, so the layer is dropped rather than emitting a broken url().
 export type ImageResolver = (paint: ImagePaint) => Promise<string | null>;
 
-export const imageResolver: ImageResolver = async (paint) => {
-  if (!paint.imageHash) return null;
-  try {
-    const img = figma.getImageByHash(paint.imageHash);
-    if (!img) return null;
-    const bytes = await img.getBytesAsync();
-    return `data:image/png;base64,${figma.base64Encode(bytes)}`;
-  } catch {
-    return null;
-  }
-};
+export interface ImageStore {
+  resolve: ImageResolver;
+  // `--fig-img-N: url("data:…")` declarations, one per distinct image.
+  declarations(): string[];
+  bytes(): number;
+  // Images left out because the document hit its size budget. Reported to the
+  // user rather than dropped quietly.
+  skipped(): number;
+}
+
+// Inlining is capped so one oversized source asset cannot produce a document too
+// large to hand back. Base64 characters, so roughly 48 MB of markup.
+const BUDGET = 48 * 1024 * 1024;
+
+export interface ImageStoreOpts {
+  onProgress?: (done: number, bytes: number) => void;
+}
+
+// One image is fetched, encoded and written into the document ONCE, however many
+// nodes paint with it, and every user references it through a custom property.
+//
+// This is not a micro-optimisation. In a real page one hero texture was painted
+// by six nodes, and inlining the asset per use turned a ~13 MB export into a
+// document large enough to hang the plugin for minutes.
+export function createImageStore(opts: ImageStoreOpts = {}): ImageStore {
+  const byHash = new Map<string, string | null>(); // hash -> var() reference
+  const decls: string[] = [];
+  let total = 0;
+  let dropped = 0;
+
+  const resolve: ImageResolver = async (paint) => {
+    const hash = paint.imageHash;
+    if (!hash) return null;
+    const seen = byHash.get(hash);
+    if (seen !== undefined) return seen;
+
+    let ref: string | null = null;
+    try {
+      const img = figma.getImageByHash(hash);
+      if (img) {
+        const b64 = figma.base64Encode(await img.getBytesAsync());
+        if (total + b64.length > BUDGET) {
+          dropped++;
+        } else {
+          const name = `--fig-img-${decls.length}`;
+          decls.push(`${name}: url("data:image/png;base64,${b64}");`);
+          total += b64.length;
+          ref = `var(${name})`;
+        }
+      }
+    } catch {
+      ref = null;
+    }
+    byHash.set(hash, ref);
+    opts.onProgress?.(byHash.size, total);
+    return ref;
+  };
+
+  return {
+    resolve,
+    declarations: () => decls,
+    bytes: () => total,
+    skipped: () => dropped,
+  };
+}
 
 // How an image paint sits in its box. CROP is driven by imageTransform, which
 // the API docs do not pin down; cover is the closest safe default.
@@ -97,10 +150,8 @@ async function paintImage(p: Paint, resolve: ImageResolver): Promise<string | nu
   ) {
     return gradientPaintCss(p, o);
   }
-  if (p.type === "IMAGE") {
-    const url = await resolve(p);
-    return url ? `url("${url}")` : null;
-  }
+  // Already a var() reference into the shared image block, not a raw url().
+  if (p.type === "IMAGE") return resolve(p);
   return null; // VIDEO, PATTERN, SHADER: no CSS form, and rasterising is the caller's job
 }
 

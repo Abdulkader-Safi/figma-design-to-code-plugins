@@ -61,6 +61,8 @@ figma.ui.onmessage = async (msg: {
   const opts = {
     semantic: msg.semantic !== false,
     tailwind: msg.tailwind === true,
+    onProgress: (message: string) =>
+      figma.ui.postMessage({ type: "progress", message }),
   };
 
   try {
@@ -80,10 +82,11 @@ figma.ui.onmessage = async (msg: {
       out = await generate(plan.frame, opts);
       name = sanitizeFileName(plan.frame.name);
     }
+    const note = "note" in out ? (out as { note?: string }).note : undefined;
     figma.ui.postMessage({
       type: "result",
       name,
-      summary,
+      summary: [summary, note].filter(Boolean).join(". ") || undefined,
       combined: out.combined,
       html: out.html,
       css: out.css,
