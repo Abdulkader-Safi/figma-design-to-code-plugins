@@ -47,16 +47,26 @@ export function cascadeDiff(effective: Rule, target: Rule, base: Rule): Rule {
   return out;
 }
 
-// For each base child, its counterpart in otherKids. Identity is the name, and
-// position only breaks ties within a name: the nth child called "Card" pairs
-// with the nth child called "Card". A name the other frame does not use at all
-// pairs with nothing, so a node the designer replaced rather than restyled stays
-// its own element instead of inheriting a stranger's position.
+// Whether two nodes can stand for the same element at all. Sharing a name is not
+// enough on its own: a mobile frame's hero image and a laptop frame's text panel
+// were both called "Sub Container", and pairing them exported the panel as a
+// stretched image. Same Figma type, and a leaf only ever pairs with a leaf.
+export function compatible(a: SceneNode, b: SceneNode): boolean {
+  if (a.type !== b.type) return false;
+  const kids = (n: SceneNode) => ("children" in n ? n.children.length : 0);
+  return (kids(a) === 0) === (kids(b) === 0);
+}
+
+// For each base child, its counterpart in otherKids. Identity is the name, with
+// position breaking ties inside a name: the nth "Card" takes the next unclaimed
+// compatible "Card". A name the other frame does not use pairs with nothing, so
+// a node the designer rebuilt rather than restyled stays its own element instead
+// of inheriting a stranger's position.
 //
-// Bucketing by name matters when the two frames hold different counts. Raw index
-// matching paired a mobile icon button with a desktop row that happened to sit
-// at the same position, then forced their unrelated children together; pairing
-// four cards with three now leaves the fourth unmatched and lines the rest up.
+// Matching on the raw index instead bound a mobile icon button to whatever
+// desktop node shared its slot and then forced their unrelated subtrees
+// together. Bucketing also means four cards against three leave the fourth
+// unmatched rather than shifting every pair by one.
 export function matchChildren(
   baseKids: SceneNode[],
   otherKids: SceneNode[],
@@ -68,12 +78,14 @@ export function matchChildren(
     if (bucket) bucket.push(k);
     else byName.set(name, [k]);
   }
-  const taken = new Map<string, number>();
+  // ponytail: linear scan per child. Sibling counts are small; if a frame ever
+  // holds thousands of same-named children this wants an index per bucket.
+  const claimed = new Set<SceneNode>();
   return baseKids.map((child) => {
-    const name = child.name || "";
-    const nth = taken.get(name) ?? 0;
-    taken.set(name, nth + 1);
-    return byName.get(name)?.[nth] ?? null;
+    const bucket = byName.get(child.name || "");
+    const hit = bucket?.find((k) => !claimed.has(k) && compatible(child, k));
+    if (hit) claimed.add(hit);
+    return hit ?? null;
   });
 }
 
@@ -93,26 +105,34 @@ export function matchChildren(
 export function appendedGroups(
   perToken: { token: Token; kids: SceneNode[]; used: Set<SceneNode> }[],
 ): { index: number; nodes: { token: Token; node: SceneNode }[] }[] {
-  const groups = new Map<string, { index: number; nodes: { token: Token; node: SceneNode }[] }>();
-  let anon = 0;
+  type Group = { index: number; nodes: { token: Token; node: SceneNode }[] };
+  const byName = new Map<string, Group[]>();
+  const all: Group[] = [];
   for (const { token, kids, used } of perToken) {
-    const seen = new Map<string, number>();
     kids.forEach((k, i) => {
       if (used.has(k)) return;
       const name = k.name || "";
-      const nth = seen.get(name) ?? 0;
-      seen.set(name, nth + 1);
-      const key = name ? `n:${name}#${nth}` : `a:${anon++}`;
-      const g = groups.get(key);
-      if (g) {
-        g.nodes.push({ token, node: k });
-        g.index = Math.min(g.index, i);
-      } else {
-        groups.set(key, { index: i, nodes: [{ token, node: k }] });
+      const list = byName.get(name);
+      // Join the first group of this name that is compatible and does not yet
+      // hold this token. Skipping groups that already hold it is what keeps four
+      // sibling "Card"s four groups; the compatibility check is what stops an
+      // image joining a text panel when two frames order their additions apart.
+      let group = name
+        ? list?.find(
+            (g) => !g.nodes.some((x) => x.token === token) && compatible(g.nodes[0].node, k),
+          )
+        : undefined;
+      if (!group) {
+        group = { index: i, nodes: [] };
+        all.push(group);
+        if (list) list.push(group);
+        else byName.set(name, [group]);
       }
+      group.nodes.push({ token, node: k });
+      group.index = Math.min(group.index, i);
     });
   }
-  return [...groups.values()].sort((a, b) => a.index - b.index);
+  return all.sort((a, b) => a.index - b.index);
 }
 
 // The display value to SET at each token where this node's visibility flips,

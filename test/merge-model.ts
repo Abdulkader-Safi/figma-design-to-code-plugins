@@ -32,8 +32,11 @@ assert(
   "no reset when already at the base value",
 );
 
-// matchChildren: by name first.
-const n = (name: string) => ({ name, children: [] }) as never as SceneNode;
+// matchChildren: by name first. Fakes carry the fields the matcher reads.
+const n = (name: string) => ({ name, type: "FRAME", children: [] }) as never as SceneNode;
+// A branch (has children) and a leaf of the same name must never pair.
+const branch = (name: string) => ({ name, type: "FRAME", children: [n("x")] }) as never as SceneNode;
+const other = (name: string) => ({ name, type: "RECTANGLE" }) as never as SceneNode;
 const byName = matchChildren([n("Logo"), n("Title")], [n("Title"), n("Logo")]);
 assert(
   (byName[0] as SceneNode).name === "Logo" && (byName[1] as SceneNode).name === "Title",
@@ -72,6 +75,29 @@ const rows = [n("Container"), n("Container")];
 assert(
   matchChildren(icons, rows).every((m) => m === null),
   "an unused name never binds by position alone",
+);
+
+// The hero regression: the mobile image and the laptop text panel were both
+// called "Sub Container". Same name, but a leaf never pairs with a branch, so
+// each keeps its own element and the panel is not exported as an image.
+const heroBase = [other("Sub Container")];
+const heroLg = [branch("Sub Container"), other("Sub Container")];
+const hero = matchChildren(heroBase, heroLg);
+assert(hero[0] === heroLg[1], "the image pairs with the image, not the panel");
+
+// Different Figma types never pair, whatever they are called.
+assert(matchChildren([n("Box")], [other("Box")])[0] === null, "type mismatch does not pair");
+
+// appendedGroups applies the same guard when two frames order additions apart.
+const gA = branch("Sub Container"), gB = other("Sub Container");
+const guarded = appendedGroups([
+  { token: "lg", kids: [gA, gB], used: new Set() },
+  { token: "xl", kids: [gB, gA], used: new Set() },
+]);
+assert(guarded.length === 2, `reordered additions stay two groups, got ${guarded.length}`);
+assert(
+  guarded.every((g) => g.nodes.every((x) => x.node.type === g.nodes[0].node.type)),
+  "no group mixes a leaf with a branch",
 );
 
 // Position still resolves within a name, not across the whole list.
