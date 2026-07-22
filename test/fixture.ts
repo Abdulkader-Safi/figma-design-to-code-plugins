@@ -4,43 +4,13 @@
 // the real exporter. If this passes, a fixture a designer dumps from Figma is
 // enough to reproduce and fix their layout here, with no export-and-send round
 // trip. Importing replay first installs the figma stub.
-import { hydrateFrames } from "./replay";
+import { assert, BOX, hydrateFrames, loadFixture, type Fake } from "./fakes";
 
 const { dumpFixture, MIXED_MARKER } = await import("../src/fixture");
 const { generate } = await import("../src/generate");
 
-function assert(cond: boolean, msg: string) {
-  if (!cond) throw new Error("FAIL: " + msg);
-}
 
-type Fake = Record<string, unknown>;
 
-const BOX: Fake = {
-  type: "FRAME",
-  visible: true,
-  x: 0,
-  y: 0,
-  width: 100,
-  height: 100,
-  rotation: 0,
-  opacity: 1,
-  layoutMode: "NONE",
-  layoutPositioning: "AUTO",
-  layoutSizingHorizontal: "FIXED",
-  layoutSizingVertical: "FIXED",
-  primaryAxisAlignItems: "MIN",
-  counterAxisAlignItems: "MIN",
-  itemSpacing: 0,
-  paddingTop: 0,
-  paddingRight: 0,
-  paddingBottom: 0,
-  paddingLeft: 0,
-  fills: [],
-  strokes: [],
-  effects: [],
-  cornerRadius: 0,
-  clipsContent: false,
-};
 
 const heading = {
   ...BOX,
@@ -99,7 +69,13 @@ assert(parsed.version === 1, "the fixture is versioned");
 assert(parsed.frames.length === 1, "one frame in, one frame out");
 assert(!json.includes("base64"), "no pixels travel in a fixture");
 
-const [replayed] = hydrateFrames(parsed.frames as never);
+// Through a real file, which is how a dumped fixture actually arrives: it is
+// the only caller loadFixture has, and an entry point with no caller rots.
+const tmp = `/tmp/design-to-html-fixture-${Bun.hash(json)}.json`;
+await Bun.write(tmp, json);
+const fromDisk = await loadFixture(tmp);
+assert(fromDisk.version === 1, "loadFixture read the version back");
+const [replayed] = fromDisk.frames;
 assert((replayed as unknown as Fake).name === "Services Page", "the frame survived the round trip");
 
 // The real exporter runs against the replayed tree.

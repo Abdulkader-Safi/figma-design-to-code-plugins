@@ -7,97 +7,23 @@
 //
 // The Figma surface the pipeline touches is tiny: figma.mixed, base64Encode,
 // exportAsync and getStyledTextSegments. Stub it before importing anything.
-const MIXED = Symbol("figma.mixed");
-(globalThis as unknown as { figma: unknown }).figma = {
-  mixed: MIXED,
-  base64Encode: () => "STUB",
-  getImageByHash: (hash: string) =>
-    hash
-      ? {
-          getBytesAsync: async () => new Uint8Array([0, 0, 0]),
-          getSizeAsync: async () => ({ width: 64, height: 64 }),
-        }
-      : null,
-};
+import {
+  assert,
+  BOX,
+  column,
+  frame,
+  imageNode as image,
+  row,
+  text,
+  type Fake,
+} from "./fakes";
 
 const { buildMergedTree } = await import("../src/merge-build");
 const { emitMerged } = await import("../src/merge-emit");
 const { createImageStore } = await import("../src/paint");
 
-function assert(cond: boolean, msg: string) {
-  if (!cond) throw new Error("FAIL: " + msg);
-}
 
-type Fake = Record<string, unknown>;
 
-const BOX: Fake = {
-  type: "FRAME",
-  visible: true,
-  x: 0,
-  y: 0,
-  width: 100,
-  height: 100,
-  rotation: 0,
-  opacity: 1,
-  layoutMode: "NONE",
-  layoutPositioning: "AUTO",
-  layoutSizingHorizontal: "FIXED",
-  layoutSizingVertical: "FIXED",
-  primaryAxisAlignItems: "MIN",
-  counterAxisAlignItems: "MIN",
-  itemSpacing: 0,
-  paddingLeft: 0,
-  paddingRight: 0,
-  paddingTop: 0,
-  paddingBottom: 0,
-  fills: [],
-  strokes: [],
-  effects: [],
-  cornerRadius: 0,
-  clipsContent: false,
-};
-
-const frame = (name: string, o: Fake = {}): SceneNode =>
-  ({ ...BOX, name, children: [], ...o }) as never as SceneNode;
-
-// A column of children, which is what every section in the design actually is.
-const column = (name: string, children: SceneNode[], o: Fake = {}): SceneNode =>
-  frame(name, {
-    layoutMode: "VERTICAL",
-    layoutSizingHorizontal: "FILL",
-    layoutSizingVertical: "HUG",
-    children,
-    ...o,
-  });
-
-const row = (name: string, children: SceneNode[], o: Fake = {}): SceneNode =>
-  column(name, children, { layoutMode: "HORIZONTAL", ...o });
-
-// A frame carrying an image fill: hasImageFill sends it out as an <img>.
-const image = (name: string, o: Fake = {}): SceneNode =>
-  frame(name, {
-    fills: [{ type: "IMAGE", visible: true, scaleMode: "FILL" }],
-    exportAsync: async () => new Uint8Array([1, 2, 3]),
-    ...o,
-  });
-
-const text = (name: string, characters: string, o: Fake = {}): SceneNode =>
-  frame(name, {
-    type: "TEXT",
-    characters,
-    textAutoResize: "NONE",
-    textAlignHorizontal: "LEFT",
-    fontName: { family: "Roboto Flex", style: "Bold" },
-    fontSize: 28,
-    fontWeight: 700,
-    textCase: "ORIGINAL",
-    textDecoration: "NONE",
-    letterSpacing: { unit: "PIXELS", value: 0 },
-    lineHeight: { unit: "AUTO" },
-    hyperlink: null,
-    getStyledTextSegments: () => [],
-    ...o,
-  });
 
 const noop = () => {};
 

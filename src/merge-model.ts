@@ -91,7 +91,7 @@ function textSig(node: SceneNode): string[] {
 // Content is only used to separate CONTAINERS. A text node whose copy differs
 // between frames is still one node with two strings, which the emitter toggles;
 // that reads far better than two duplicated elements.
-export function compatible(a: SceneNode, b: SceneNode): boolean {
+function compatible(a: SceneNode, b: SceneNode): boolean {
   if (a.type !== b.type) return false;
   const kids = (n: SceneNode) => ("children" in n ? n.children.length : 0);
   if ((kids(a) === 0) !== (kids(b) === 0)) return false;

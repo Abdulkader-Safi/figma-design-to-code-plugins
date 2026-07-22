@@ -4,6 +4,19 @@
 import type { Rule } from "./types";
 import { solidFill, styleToWeight, round } from "./values";
 
+// The fields getStyledTextSegments is asked for. One source, so the exporter and
+// the fixture dump cannot drift apart and replay a node with different styling
+// than the export saw.
+export const SEGMENT_FIELDS = [
+  "fontName",
+  "fontSize",
+  "fills",
+  "textDecoration",
+  "textCase",
+  "letterSpacing",
+  "lineHeight",
+] as const;
+
 // Fields shared by a TextNode and one styled segment. On the node these can be
 // figma.mixed; on a segment they are always concrete.
 export type TextStyleSource = {

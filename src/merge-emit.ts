@@ -12,15 +12,12 @@ import { toTailwind, fontSlug } from "./tailwind";
 import { fontLink, docShell } from "./document";
 
 const ORDER: Token[] = ["base", "sm", "md", "lg", "xl", "2xl"];
+// base is the unprefixed rule, so it activates at 0; the rest come straight
+// from the shared table rather than a second copy of the same numbers.
 const MIN_WIDTH: Record<Token, number> = {
   base: 0,
-  sm: 640,
-  md: 768,
-  lg: 1024,
-  xl: 1280,
-  "2xl": 1536,
-};
-void STANDARD; // MIN_WIDTH mirrors STANDARD; kept explicit for the emitter's use.
+  ...Object.fromEntries(STANDARD.map((s) => [s.token, s.minWidth])),
+} as Record<Token, number>;
 
 export interface EmitOpts {
   title: string;

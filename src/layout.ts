@@ -248,20 +248,17 @@ export function applyLayout(node: SceneNode, rule: Rule) {
     return;
   }
 
-  // Negative gap: the children overlap. CSS `gap` cannot go negative, so the
-  // spacing moves to sibling margins, which shrink the container's content size
-  // the same way Figma's negative spacing does. The caller emits the margin (and
-  // the stacking order, which negative spacing makes visible) per child.
-  rule[NEGATIVE_GAP] = `${gap}px`;
+  // Negative gap: the children overlap. CSS `gap` cannot go negative, so nothing
+  // is emitted here; the spacing moves to sibling margins, which shrink the
+  // container's content size the same way Figma's negative spacing does. The
+  // caller applies overlapMargin and overlapZIndex to each child.
   if (cross) rule["row-gap"] = `${Math.round(cross)}px`;
 }
 
-// Carried on the parent's rule for the emitter to turn into child margins. It is
-// not a CSS property and never reaches the stylesheet.
-export const NEGATIVE_GAP = "--negative-gap";
-
 // The margin one child needs so its parent's negative gap overlaps it onto the
 // previous sibling. Index 0 gets nothing, since there is nothing to overlap.
+// Both this and overlapZIndex return nothing unless the parent's gap is
+// negative, so callers can apply them to every child unconditionally.
 export function overlapMargin(parent: SceneNode, index: number): Rule {
   if (index === 0 || !("layoutMode" in parent)) return {};
   const n = parent as FrameNode;
