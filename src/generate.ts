@@ -155,7 +155,8 @@ export async function generate(
     // Landmark bands (section/header/footer/main) only apply at the top level.
     const topBand = parent === root;
     // Exported whole as one asset, so any rotation is baked into the asset.
-    const asSvg = isVectorLike(node) || isIconContainer(node);
+    // parent !== null: the page root is never collapsed into one picture.
+    const asSvg = isVectorLike(node) || (parent !== null && isIconContainer(node));
     const asImg = !asSvg && isImageLeaf(node);
 
     positionAndSize(node, parent, absolute, asSvg || asImg, rule);
@@ -504,7 +505,7 @@ export async function nodeRule(
   const rule: Rule = {};
   const absolute =
     parent !== null && (!isAutoLayout(parent) || ignoresAutoLayout(node));
-  const asSvg = isVectorLike(node) || isIconContainer(node);
+  const asSvg = isVectorLike(node) || (parent !== null && isIconContainer(node));
   const asImg = !asSvg && isImageLeaf(node);
 
   positionAndSize(node, parent, absolute, asSvg || asImg, rule);

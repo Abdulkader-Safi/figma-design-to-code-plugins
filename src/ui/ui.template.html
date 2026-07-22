@@ -65,7 +65,7 @@
 
 <button
     id="export"
-    class="w-full cursor-pointer rounded-[9px] border-0 bg-clay px-4 py-3 font-semibold text-[#0c0b0a] transition-colors duration-150 hover:bg-clay-hover"
+    class="w-full cursor-pointer rounded-[9px] border-0 bg-clay px-4 py-3 font-semibold text-[#0c0b0a] transition-colors duration-150 hover:bg-clay-hover disabled:cursor-wait disabled:opacity-60"
 >
     Export selected frame
 </button>
@@ -395,6 +395,15 @@
     });
 
     $("export").onclick = () => {
+        // Release the previous run first. A page with images holds tens of
+        // megabytes of bytes here, and stacking a second export on top of the
+        // first is what makes the panel feel unresponsive.
+        state.assets = [];
+        state.combined = state.html = state.css = "";
+        $("output").textContent = "";
+        show(false);
+
+        $("export").disabled = true;
         setStatus("Generating…");
         parent.postMessage(
             {
@@ -483,7 +492,11 @@
         if (!msg) return;
         if (msg.type === "progress") {
             setStatus(msg.message);
-        } else if (msg.type === "error") {
+            return;
+        }
+        // Anything that is not progress ends the run.
+        $("export").disabled = false;
+        if (msg.type === "error") {
             setStatus(msg.message, true);
             show(false);
         } else if (msg.type === "fixture") {

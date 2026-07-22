@@ -39,7 +39,7 @@ Either way the export contains:
 - **The styles**, as a stylesheet (CSS mode) or utility classes plus a small config (Tailwind mode).
 - **A Google Fonts link** for the font families your text uses. Families that are not on Google fall back to a system font, so nothing breaks.
 - **Your images**, as real PNG files under `images/`. Each distinct image is written once however many layers paint with it, and resized to a sensible maximum, so a page does not carry six copies of the same background at its original upload resolution.
-- **Your icons and vectors**, inlined as SVG, so they stay crisp at any size and multi-part icons render as one piece.
+- **Your icons and vectors**, inlined as SVG, so they stay crisp at any size. Any layer whose whole subtree is vector art goes out as a single SVG, whatever its size, so a multi-part icon renders as one piece and a full-width generative illustration does not become thousands of separate elements.
 
 Unzip it and open `index.html`, or drop the whole folder into a static host.
 

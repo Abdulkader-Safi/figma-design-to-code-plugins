@@ -51,11 +51,15 @@ export const isImageLeaf = (n: SceneNode): boolean =>
 // A container is an icon/illustration when its whole subtree is vector art:
 // at least one real vector, and no text or image anywhere. Such nodes export
 // cleanly as a single SVG; anything with text (a card, a button) does not.
+//
+// There used to be a 128px size cap here, on the assumption that only icons are
+// worth flattening. A hero's generative wave broke that: 1686 vector paths, each
+// exported as its own positioned div with its own inline SVG, which came to
+// 840 KB of markup and did not look like the design. Size is not the signal.
+// Vector art is vector art at any scale, so the whole subtree goes out as one
+// SVG and Figma composes it exactly as drawn.
 export function isIconContainer(node: SceneNode): boolean {
   if (!("children" in node) || node.children.length === 0) return false;
-  // Icons are small; cap the size so real sections or large vector art aren't
-  // flattened into one SVG. ponytail: raise the cap if big vector logos need it.
-  if ("width" in node && (node.width > 128 || node.height > 128)) return false;
   let hasVector = false;
   let ok = true;
   const walk = (n: SceneNode) => {
