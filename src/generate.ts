@@ -21,7 +21,13 @@ import {
   NEGATIVE_GAP,
 } from "./layout";
 import { applyBoxDecoration } from "./decoration";
-import { fillStack, createImageStore, type FillLayer, type ImageStore } from "./paint";
+import {
+  fillStack,
+  createImageStore,
+  type FillLayer,
+  type ImageStore,
+  type Asset,
+} from "./paint";
 import { styleRule, ALIGN } from "./text";
 import { toTailwind, fontSlug } from "./tailwind";
 import { fontLink, docShell } from "./document";
@@ -55,7 +61,13 @@ export interface GenerateOpts {
 export async function generate(
   root: SceneNode,
   opts: GenerateOpts,
-): Promise<{ combined: string; html: string; css: string; note?: string }> {
+): Promise<{
+  combined: string;
+  html: string;
+  css: string;
+  note?: string;
+  assets: Asset[];
+}> {
   const cssRules: string[] = [];
   const fonts = new Map<string, Set<number>>(); // family -> weights
   // Distinct images for this document. Each is encoded once and referenced by
@@ -173,9 +185,9 @@ export async function generate(
           format: "PNG",
           constraint: { type: "SCALE", value: 2 },
         });
-        const b64 = figma.base64Encode(bytes);
+        const src = images.addBytes(bytes);
         rule["object-fit"] = "cover";
-        return `${indent}<img class="${emitClass(cls, rule)}" src="data:image/png;base64,${b64}" alt="${escapeHtml(node.name)}" />`;
+        return `${indent}<img class="${emitClass(cls, rule)}" src="${src}" alt="${escapeHtml(node.name)}" />`;
       } catch {
         return `${indent}<div class="${emitClass(cls, rule)}"></div>`;
       }
@@ -338,11 +350,10 @@ export async function generate(
   const body = await build(root, null, 3, "", false);
   const links = fontLink(fonts);
 
-  // Never let a cap pass silently: if the budget stopped an image being inlined,
-  // say so rather than shipping a document that quietly lost a background.
+  const files = images.assets();
   const imageNote = (): string | undefined =>
-    images.skipped() > 0
-      ? `${images.skipped()} image${images.skipped() === 1 ? "" : "s"} left out: the document hit its size limit.`
+    files.length
+      ? `${files.length} image${files.length === 1 ? "" : "s"} (${Math.round(images.bytes() / 1048576)} MB)`
       : undefined;
 
   // Tailwind mode: every style is a utility. The v4 browser CDN builds the
@@ -361,26 +372,18 @@ export async function generate(
     // never had, which loosens every AUTO (unset) line-height and drifts from
     // the design. Reset to normal in @layer base so the utilities layer's
     // explicit leading-[…] still wins; only AUTO nodes fall back to normal.
-    const imageBlock = images.declarations().length
-      ? `  :root {\n${images.declarations().map((d) => `    ${d}`).join("\n")}\n  }\n`
-      : "";
-    const twConfig = `${theme}${imageBlock}  @layer base { * { line-height: normal; } }`;
+    const twConfig = `${theme}  @layer base { * { line-height: normal; } }`;
     const bodyClass = `flex justify-center${pageBg ? ` ${bgUtil(pageBg)}` : ""}`;
     const head =
       `  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>\n` +
       `  <style type="text/tailwindcss">\n${twConfig}\n  </style>`;
     const doc = docShell(root.name, links, head, body, bodyClass);
-    return { combined: doc, html: doc, css: "", note: imageNote() };
+    return { combined: doc, html: doc, css: "", note: imageNote(), assets: files };
   }
 
   const bodyRule = `body { display: flex; justify-content: center;${pageBg ? ` background: ${pageBg};` : ""} }`;
 
-  const imageBlock = images.declarations().length
-    ? `:root {\n${images.declarations().map((d) => `  ${d}`).join("\n")}\n}\n\n`
-    : "";
-
   const stylesheet =
-    imageBlock +
     "* { margin: 0; padding: 0; box-sizing: border-box; }\n" +
     // Strip user-agent chrome so a semantic <button>/<a> is painted only by the
     // node's own styles (no buttonface fill, no outset border, no link blue).
@@ -398,6 +401,7 @@ export async function generate(
     html: docShell(root.name, links, linkBlock, body),
     css: stylesheet,
     note: imageNote(),
+    assets: files,
   };
 }
 
@@ -406,9 +410,19 @@ export async function generate(
 // frames; the page background and title come from the base (smallest) frame.
 export async function generateResponsive(
   variants: FrameVariant[],
-  opts: { semantic: boolean; tailwind: boolean },
-): Promise<{ combined: string; html: string; css: string }> {
+  opts: GenerateOpts,
+): Promise<{
+  combined: string;
+  html: string;
+  css: string;
+  note?: string;
+  assets: Asset[];
+}> {
   const fonts = new Map<string, Set<number>>();
+  const images = createImageStore({
+    onProgress: (done, bytes) =>
+      opts.onProgress?.(`Exporting images: ${done} (${Math.round(bytes / 1048576)} MB)`),
+  });
   const addFont = (family: string, weight: number) => {
     if (!fonts.has(family)) fonts.set(family, new Set());
     fonts.get(family)!.add(weight);
@@ -420,13 +434,21 @@ export async function generateResponsive(
       ? solidFill(base.fills) || gradientFill(base.fills)
       : null;
 
-  const tree = await buildMergedTree(variants, { semantic: opts.semantic }, addFont);
-  return emitMerged(tree, {
+  const tree = await buildMergedTree(variants, { semantic: opts.semantic, images }, addFont);
+  const out = emitMerged(tree, {
     title: parseFrameName(base.name).prefix || base.name,
     tailwind: opts.tailwind,
     fonts,
     pageBg,
   });
+  const files = images.assets();
+  return {
+    ...out,
+    assets: files,
+    note: files.length
+      ? `${files.length} image${files.length === 1 ? "" : "s"} (${Math.round(images.bytes() / 1048576)} MB)`
+      : undefined,
+  };
 }
 
 // The style, tag, and content a node would get in single-frame export, computed
@@ -503,12 +525,12 @@ export async function nodeRule(
         format: "PNG",
         constraint: { type: "SCALE", value: 2 },
       });
-      const b64 = figma.base64Encode(bytes);
+      const src = ctx.images ? ctx.images.addBytes(bytes) : "";
       return {
         rule,
         tag: "img",
         kind: "asset",
-        asset: `src="data:image/png;base64,${b64}" alt="${escapeHtml(node.name)}"`,
+        asset: `src="${src}" alt="${escapeHtml(node.name)}"`,
       };
     } catch {
       return { rule, tag: "div", kind: "element" };
@@ -570,7 +592,13 @@ export async function nodeRule(
   // caller; here they only need their rules and their order.
   const fill =
     "fills" in node
-      ? await fillStack(node.fills, "fill", ctx.images ? ctx.images.resolve : async () => null)
+      ? await fillStack(
+          node.fills,
+          "fill",
+          // Only the primary frame pays for the export; the other tokens reuse
+          // the same paint and need the rule, not the pixels.
+          exportAssets && ctx.images ? ctx.images.resolve : async () => null,
+        )
       : { rule: {}, layers: [] };
   Object.assign(rule, fill.rule);
   delete rule[NEGATIVE_GAP];

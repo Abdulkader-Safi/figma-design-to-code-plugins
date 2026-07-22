@@ -15,6 +15,7 @@ import type { Token } from "./breakpoints";
 import type { FrameVariant } from "./responsive";
 import { type MergedNode, appendedGroups, matchChildren } from "./merge-model";
 import { nodeRule, type NodeStyle } from "./generate";
+import type { ImageStore } from "./paint";
 import { headingMap } from "./semantic";
 
 const ORDER: Token[] = ["base", "sm", "md", "lg", "xl", "2xl"];
@@ -31,7 +32,7 @@ const visibleChildren = (n: SceneNode): SceneNode[] =>
 
 export async function buildMergedTree(
   variants: FrameVariant[],
-  opts: { semantic: boolean },
+  opts: { semantic: boolean; images?: ImageStore },
   addFont: (family: string, weight: number) => void,
 ): Promise<MergedNode> {
   const headingsByToken = new Map<Token, Map<number, string>>();
@@ -82,6 +83,7 @@ export async function buildMergedTree(
         {
           headings: headingsByToken.get(t) ?? new Map(),
           semantic: opts.semantic,
+          images: opts.images,
           addFont,
           pageW: pageWByToken.get(t) ?? 0,
           topBand,

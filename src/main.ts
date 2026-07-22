@@ -82,14 +82,16 @@ figma.ui.onmessage = async (msg: {
       out = await generate(plan.frame, opts);
       name = sanitizeFileName(plan.frame.name);
     }
-    const note = "note" in out ? (out as { note?: string }).note : undefined;
     figma.ui.postMessage({
       type: "result",
       name,
-      summary: [summary, note].filter(Boolean).join(". ") || undefined,
+      summary: [summary, out.note].filter(Boolean).join(". ") || undefined,
       combined: out.combined,
       html: out.html,
       css: out.css,
+      // Image files travel as raw bytes; the panel is where a zip can be built
+      // and where a browser can downscale them.
+      assets: out.assets,
     });
   } catch (e) {
     figma.ui.postMessage({
