@@ -58,6 +58,44 @@ export function matchChildren(
   });
 }
 
+// Children that exist in a larger frame but have no counterpart in the primary
+// one, ready to be inserted into the merged child list.
+//
+// Two things matter here. Same-named siblings must stay distinct: Figma designs
+// are full of repeated nodes all called "Card", and keying a group on the name
+// alone collapses four service cards into one and silently drops three. So the
+// key carries an occurrence counter within its own token. Across tokens the name
+// still groups, so an element added by both the tablet and the desktop frame
+// stays a single node present at both.
+//
+// `index` is where the node sat among its own frame's children, so the caller
+// can splice it near its real position instead of pushing every addition to the
+// end (which puts a section heading below the cards it introduces).
+export function appendedGroups(
+  perToken: { token: Token; kids: SceneNode[]; used: Set<SceneNode> }[],
+): { index: number; nodes: { token: Token; node: SceneNode }[] }[] {
+  const groups = new Map<string, { index: number; nodes: { token: Token; node: SceneNode }[] }>();
+  let anon = 0;
+  for (const { token, kids, used } of perToken) {
+    const seen = new Map<string, number>();
+    kids.forEach((k, i) => {
+      if (used.has(k)) return;
+      const name = k.name || "";
+      const nth = seen.get(name) ?? 0;
+      seen.set(name, nth + 1);
+      const key = name ? `n:${name}#${nth}` : `a:${anon++}`;
+      const g = groups.get(key);
+      if (g) {
+        g.nodes.push({ token, node: k });
+        g.index = Math.min(g.index, i);
+      } else {
+        groups.set(key, { index: i, nodes: [{ token, node: k }] });
+      }
+    });
+  }
+  return [...groups.values()].sort((a, b) => a.index - b.index);
+}
+
 // The display value to SET at each token where this node's visibility flips,
 // walking tokens in ascending order. A node present at a token shows with
 // baseDisplay; absent shows "none". Only transitions are emitted (mobile-first

@@ -1,5 +1,5 @@
 // Headless self-check for the pure merge algorithms. Run: bun run test/merge-model.ts
-import { diffRules, matchChildren, displayTransitions } from "../src/merge-model";
+import { appendedGroups, diffRules, matchChildren, displayTransitions } from "../src/merge-model";
 import type { Token } from "../src/breakpoints";
 
 function assert(cond: boolean, msg: string) {
@@ -38,6 +38,42 @@ const dupA = [n("Item"), n("Item")];
 const dupB = [n("Item"), n("Item")];
 const dup = matchChildren(dupA, dupB);
 assert(dup[0] === dupB[0] && dup[1] === dupB[1], "duplicate names use position");
+
+// appendedGroups: four unmatched siblings all named "Card" stay four groups.
+// Collapsing them on the name alone dropped three of every four service cards.
+const cards = [n("Card"), n("Card"), n("Card"), n("Card")];
+const g1 = appendedGroups([{ token: "lg", kids: cards, used: new Set() }]);
+assert(g1.length === 4, `four same-named siblings stay distinct, got ${g1.length}`);
+assert(
+  g1.map((g) => g.index).join(",") === "0,1,2,3",
+  `each keeps its own index: ${g1.map((g) => g.index)}`,
+);
+
+// The same logical addition in two larger frames is still one node at both.
+const lgKids = [n("Sidebar")], xlKids = [n("Sidebar")];
+const g2 = appendedGroups([
+  { token: "lg", kids: lgKids, used: new Set() },
+  { token: "xl", kids: xlKids, used: new Set() },
+]);
+assert(g2.length === 1, `same name across tokens groups into one, got ${g2.length}`);
+assert(
+  g2[0].nodes.map((x) => x.token).join(",") === "lg,xl",
+  `present at both tokens: ${g2[0].nodes.map((x) => x.token)}`,
+);
+
+// Matched children are skipped, and the nth same-named node pairs with the nth.
+const lgRows = [n("Row"), n("Row")], xlRows = [n("Row"), n("Row")];
+const g3 = appendedGroups([
+  { token: "lg", kids: lgRows, used: new Set([lgRows[0]]) },
+  { token: "xl", kids: xlRows, used: new Set() },
+]);
+assert(g3.length === 2, `one matched row leaves two groups, got ${g3.length}`);
+
+// Unnamed nodes never group across tokens, and groups come back in order.
+const g4 = appendedGroups([
+  { token: "lg", kids: [n("Heading"), u(), u()], used: new Set() },
+]);
+assert(g4.length === 3 && g4[0].index === 0, "unnamed siblings stay separate, sorted by index");
 
 // displayTransitions: present only from md up -> hidden at base, shown at md.
 const order: Token[] = ["base", "sm", "md", "lg", "xl", "2xl"];
