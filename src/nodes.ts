@@ -38,6 +38,16 @@ export const hasImageFill = (n: SceneNode): boolean =>
   Array.isArray(n.fills) &&
   n.fills.some((f) => f.visible !== false && f.type === "IMAGE");
 
+const visibleKids = (n: SceneNode): number =>
+  "children" in n ? n.children.filter((c) => !("visible" in c) || c.visible !== false).length : 0;
+
+// An image fill only becomes an <img> when the node is a leaf. On a container it
+// is a background, and swapping the container for an <img> deletes everything
+// inside it: whole hero sections and every overlay heading were being replaced
+// by a flat picture of themselves.
+export const isImageLeaf = (n: SceneNode): boolean =>
+  hasImageFill(n) && visibleKids(n) === 0;
+
 // A container is an icon/illustration when its whole subtree is vector art:
 // at least one real vector, and no text or image anywhere. Such nodes export
 // cleanly as a single SVG; anything with text (a card, a button) does not.

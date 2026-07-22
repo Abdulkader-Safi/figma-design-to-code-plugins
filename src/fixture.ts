@@ -45,6 +45,22 @@ const PROPS = [
   "itemReverseZIndex",
   "strokesIncludedInLayout",
   "layoutGrids",
+  // grid auto layout, on the parent
+  "gridRowCount",
+  "gridColumnCount",
+  "gridRowGap",
+  "gridColumnGap",
+  "gridRowSizes",
+  "gridColumnSizes",
+  "gridAutoTracks",
+  "gridItemsPositioning",
+  // grid auto layout, on the child
+  "gridRowSpan",
+  "gridColumnSpan",
+  "gridRowAnchorIndex",
+  "gridColumnAnchorIndex",
+  "gridChildHorizontalAlign",
+  "gridChildVerticalAlign",
   // auto layout, on the child
   "layoutPositioning",
   "layoutSizingHorizontal",

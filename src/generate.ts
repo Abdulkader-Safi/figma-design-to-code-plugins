@@ -9,12 +9,19 @@ import {
   ignoresAutoLayout,
   isVectorLike,
   isIconContainer,
-  hasImageFill,
+  isImageLeaf,
   hugsText,
 } from "./nodes";
 import { headingMap, textTag, containerTag } from "./semantic";
-import { positionAndSize, applyLayout } from "./layout";
+import {
+  positionAndSize,
+  applyLayout,
+  overlapMargin,
+  overlapZIndex,
+  NEGATIVE_GAP,
+} from "./layout";
 import { applyBoxDecoration } from "./decoration";
+import { fillStack, imageResolver, type FillLayer } from "./paint";
 import { styleRule, ALIGN } from "./text";
 import { toTailwind, fontSlug } from "./tailwind";
 import { fontLink, docShell } from "./document";
@@ -99,12 +106,15 @@ export async function generate(
     depth: number,
     parentTag: string,
     interactive: boolean,
+    inherited: Rule = {},
   ): Promise<string> {
     if ("visible" in node && node.visible === false) return "";
 
     const cls = className(node);
     const indent = "  ".repeat(depth);
-    const rule: Rule = {};
+    // Rules the parent imposes on this child: the sibling margin that stands in
+    // for a negative gap, and the paint order that overlap makes visible.
+    const rule: Rule = { ...inherited };
     let hasBefore = false; // CSS mode: this node gets a full-bleed ::before rule
     let beforeUtils = ""; // Tailwind mode: the same bleed as before:* utilities
     // Out of the flow either because the parent has no auto-layout at all, or
@@ -117,7 +127,7 @@ export async function generate(
     const topBand = parent === root;
     // Exported whole as one asset, so any rotation is baked into the asset.
     const asSvg = isVectorLike(node) || isIconContainer(node);
-    const asImg = !asSvg && hasImageFill(node);
+    const asImg = !asSvg && isImageLeaf(node);
 
     positionAndSize(node, parent, absolute, asSvg || asImg, rule);
     if (
@@ -217,6 +227,17 @@ export async function generate(
     applyBoxDecoration(node, rule);
     applyLayout(node, rule);
 
+    // Fills. A single plain paint lands on `background`; a stack becomes one
+    // overlay element per paint, since CSS cannot fade a single background
+    // layer. Emitted before the real children so later siblings paint on top,
+    // matching Figma's bottom-to-top fills array.
+    const fill =
+      "fills" in node ? await fillStack(node.fills, cls, imageResolver) : { rule: {}, layers: [] };
+    Object.assign(rule, fill.rule);
+    const layerHtml = (fill.layers as FillLayer[]).map(
+      (l) => `${indent}  <div class="${emitClass(l.className, l.rule)}"></div>`,
+    );
+
     // The page root must not clip: a fixed-width overflow:hidden root would trap
     // every full-width section inside the design column and cancel the bleed.
     if (parent === null) delete rule.overflow;
@@ -270,8 +291,13 @@ export async function generate(
         ? containerTag(node, topBand)
         : "div";
     const kids = "children" in node ? node.children.slice() : [];
+    // Not a CSS property: it tells this node's children what margin to carry.
+    const negativeGap = rule[NEGATIVE_GAP] !== undefined;
+    delete rule[NEGATIVE_GAP];
     if (kids.length === 0) {
-      return `${indent}<${tag} class="${withBleed(emitClass(cls, rule, hasBefore))}"></${tag}>`;
+      const open = `${indent}<${tag} class="${withBleed(emitClass(cls, rule, hasBefore))}">`;
+      if (layerHtml.length === 0) return `${open}</${tag}>`;
+      return `${open}\n${layerHtml.join("\n")}\n${indent}</${tag}>`;
     }
 
     // An absolutely-placed child measures left/top from its nearest positioned
@@ -284,9 +310,12 @@ export async function generate(
     const c = withBleed(emitClass(cls, rule, hasBefore));
 
     const childInteractive = interactive || tag === "a" || tag === "button";
-    const childHtml: string[] = [];
-    for (const child of kids) {
-      const h = await build(child, node, depth + 1, tag, childInteractive);
+    const childHtml: string[] = [...layerHtml];
+    for (let i = 0; i < kids.length; i++) {
+      const extra = negativeGap
+        ? { ...overlapMargin(node, i), ...overlapZIndex(node, i, kids.length) }
+        : {};
+      const h = await build(kids[i], node, depth + 1, tag, childInteractive, extra);
       if (h) childHtml.push(h);
     }
     return `${indent}<${tag} class="${c}">\n${childHtml.join("\n")}\n${indent}</${tag}>`;
@@ -380,6 +409,7 @@ export interface NodeStyle {
   text?: string; // text characters (kind text)
   href?: string; // link target when tag is "a"
   bleedBg?: string; // full-viewport bleed background; the emitter paints it
+  layers?: FillLayer[]; // one overlay element per paint, when the fills stack
 }
 
 export interface NodeCtx {
@@ -410,7 +440,7 @@ export async function nodeRule(
   const absolute =
     parent !== null && (!isAutoLayout(parent) || ignoresAutoLayout(node));
   const asSvg = isVectorLike(node) || isIconContainer(node);
-  const asImg = !asSvg && hasImageFill(node);
+  const asImg = !asSvg && isImageLeaf(node);
 
   positionAndSize(node, parent, absolute, asSvg || asImg, rule);
   if (
@@ -505,6 +535,14 @@ export async function nodeRule(
 
   applyBoxDecoration(node, rule);
   applyLayout(node, rule);
+  // The merge emitter has no class name to hand yet, so layers are named by the
+  // caller; here they only need their rules and their order.
+  const fill =
+    "fills" in node
+      ? await fillStack(node.fills, "fill", exportAssets ? imageResolver : async () => null)
+      : { rule: {}, layers: [] };
+  Object.assign(rule, fill.rule);
+  delete rule[NEGATIVE_GAP];
   if (parent === null) delete rule.overflow;
 
   let bleedBg: string | undefined;
@@ -531,5 +569,5 @@ export async function nodeRule(
     : ctx.semantic
       ? containerTag(node, ctx.topBand)
       : "div";
-  return { rule, tag, kind: "element", bleedBg };
+  return { rule, tag, kind: "element", bleedBg, layers: fill.layers };
 }

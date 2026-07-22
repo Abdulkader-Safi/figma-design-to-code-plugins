@@ -18,6 +18,11 @@ export function installFigmaStub(): void {
   (globalThis as unknown as { figma: unknown }).figma = {
     mixed: MIXED,
     base64Encode: () => "STUB",
+    // Image paints resolve through this. A fixture carries the hash but not the
+    // bytes, so any hash yields the same stub: enough to prove the layer is
+    // emitted with the right sizing, opacity and blend mode.
+    getImageByHash: (hash: string) =>
+      hash ? { getBytesAsync: async () => new Uint8Array([0, 0, 0]) } : null,
   };
 }
 installFigmaStub();

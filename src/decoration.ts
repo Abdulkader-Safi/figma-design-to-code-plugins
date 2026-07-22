@@ -2,18 +2,14 @@
 // and clipping.
 
 import type { Rule } from "./types";
-import { solidFill, gradientFill, rgba } from "./values";
+import { rgba } from "./values";
 
+// Everything except the fills, which are layered and asynchronous (image paints
+// have to be fetched) and so live in paint.ts.
 export function applyBoxDecoration(node: SceneNode, rule: Rule) {
   // Clip children to rounded corners for any frame Figma clips, auto-layout or
   // not, so a bottom child can't poke square corners past a rounded parent.
   if ("clipsContent" in node && node.clipsContent) rule.overflow = "hidden";
-
-  // Background.
-  if ("fills" in node && Array.isArray(node.fills)) {
-    const bg = solidFill(node.fills) || gradientFill(node.fills);
-    if (bg) rule.background = bg;
-  }
 
   // Corner radius.
   if (node.type === "ELLIPSE") {
