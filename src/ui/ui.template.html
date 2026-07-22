@@ -20,8 +20,8 @@
     Export your <em class="text-clay not-italic">frame</em>
 </h1>
 <p class="m-0 mb-4 w-full leading-[1.5] text-muted">
-    Select a frame, then export it to a self-contained HTML file with layout,
-    colors, and Google fonts.
+    Select a frame, then export it to HTML and CSS with real layout, colors,
+    and Google fonts. Pages with images come out as a zip.
 </p>
 
 <div class="mb-[18px] flex items-stretch justify-between gap-5">
@@ -108,22 +108,37 @@
 </div>
 
 <footer
-    class="mt-3.5 flex shrink-0 items-center justify-between gap-3 border-t border-hairline pb-[15px] pt-[13px] font-mono text-[10px]"
+    class="mt-3.5 flex shrink-0 items-center justify-between gap-4 border-t border-hairline pb-[15px] pt-[13px] font-mono text-[10px]"
 >
-    <a
-        class="text-muted no-underline transition-colors duration-150 hover:text-text"
-        href="https://abdulkadersafi.com"
-        target="_blank"
-        rel="noopener"
-        >Created by Abdulkader Safi</a
-    >
-    <a
-        class="font-medium text-clay no-underline hover:underline"
-        href="https://ko-fi.com/abdulkadersafi"
-        target="_blank"
-        rel="noopener"
-        >&#9829; Support on Ko-fi</a
-    >
+    <div class="flex min-w-0 items-center gap-[7px]">
+        <a
+            class="truncate text-muted no-underline transition-colors duration-150 hover:text-text"
+            href="https://abdulkadersafi.com"
+            target="_blank"
+            rel="noopener"
+            >Created by Abdulkader Safi</a
+        >
+        <span class="text-dim" aria-hidden="true">/</span>
+        <!-- Substituted from package.json at build time, so a bug report can
+             name the version it came from. -->
+        <span class="shrink-0 text-dim">v__VERSION__</span>
+    </div>
+    <div class="flex shrink-0 items-center gap-3.5">
+        <a
+            class="text-muted no-underline transition-colors duration-150 hover:text-text"
+            href="https://design-to-html.abdulkadersafi.com/"
+            target="_blank"
+            rel="noopener"
+            >Docs</a
+        >
+        <a
+            class="font-medium text-clay no-underline hover:underline"
+            href="https://ko-fi.com/abdulkadersafi"
+            target="_blank"
+            rel="noopener"
+            >&#9829; Support on Ko-fi</a
+        >
+    </div>
 </footer>
 
 <script>
