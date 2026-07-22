@@ -27,12 +27,17 @@ export function gradientFill(
         x.type === "GRADIENT_ANGULAR" ||
         x.type === "GRADIENT_DIAMOND"),
   ) as GradientPaint | undefined;
-  if (!g) return null;
+  return g ? gradientPaintCss(g, g.opacity ?? 1) : null;
+}
 
+// One gradient paint -> a CSS gradient. `alpha` is the paint's own opacity,
+// which multiplies each stop's alpha: Figma keeps the two separate, and a stop
+// that is already translucent must not be reset to the paint's value.
+export function gradientPaintCss(g: GradientPaint, alpha = 1): string {
   // Stops as "color pos%", shared by every gradient kind (conic accepts the
   // percentage form too, as a fraction of the turn).
   const stops = g.gradientStops
-    .map((s) => `${rgba(s.color, s.color.a)} ${Math.round(s.position * 100)}%`)
+    .map((s) => `${rgba(s.color, (s.color.a ?? 1) * alpha)} ${Math.round(s.position * 100)}%`)
     .join(", ");
 
   const t = g.gradientTransform; // [[a, b, tx], [c, d, ty]]

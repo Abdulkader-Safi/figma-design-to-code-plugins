@@ -12,3 +12,6 @@ ui.html
 # Docs site (rspress) — source is tracked, its deps and build output are not
 docs/node_modules/
 docs/doc_build/
+
+# Design fixtures dumped from Figma: local reproduction only, never committed.
+fixtures/

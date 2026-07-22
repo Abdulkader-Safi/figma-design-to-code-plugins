@@ -26,9 +26,9 @@ The plugin now shows up under **Plugins → Development → Design to HTML**.
 3. **Pick your styling:** CSS or Tailwind. If you are not sure, start with CSS.
 4. **Leave semantic tags on** unless you have a reason to turn them off. They give you real HTML tags instead of a pile of `div`s.
 5. **Click Export selected frame.** The preview fills with the generated HTML.
-6. **Copy the code**, or **download** the `.html` file.
+6. **Copy the code**, or **download** the file. Pages with images come out as a `.zip` holding `index.html`, `styles.css` and an `images/` folder; pages without images are a single `.html`.
 
-Open the downloaded file in a browser. It should look like your frame, because everything it needs, the styles, the fonts link, the images, is inside that one file.
+Open it in a browser (unzip first, if you got a zip, and open `index.html`). It should look like your frame: the styles, the fonts link and the images all come with it.
 
 ## If the export looks off
 

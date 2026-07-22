@@ -26,35 +26,84 @@ export interface MergedNode {
   href?: string;
 }
 
-// What a breakpoint must declare to reach `target`, given `effective` (what the
-// smaller breakpoints already put in force) and `base` (the unprefixed rule).
+// What a breakpoint must declare to reach `target`, given `effective`: what the
+// smaller breakpoints already put in force.
 //
 // The second loop is the part that is easy to miss. A mobile-first cascade only
 // ever adds, so a property one breakpoint sets and the next one does not stays
-// in force: a section pinned to width 1360px for the laptop frame kept that
-// width in the desktop layout, where it should stretch. Anything dropped is put
-// back to its base value, or to `initial` when base never set it.
-export function cascadeDiff(effective: Rule, target: Rule, base: Rule): Rule {
+// in force: a section pinned to 1360px for the laptop frame kept that width in
+// the desktop layout, where it should stretch.
+export function cascadeDiff(effective: Rule, target: Rule): Rule {
   const out: Rule = {};
   for (const k of Object.keys(target)) {
     if (!(k in effective) || String(effective[k]) !== String(target[k])) out[k] = target[k];
   }
   for (const k of Object.keys(effective)) {
     if (k in target) continue;
-    const want = k in base ? base[k] : "initial";
-    if (String(effective[k]) !== String(want)) out[k] = want;
+    // Released, not restored to the base value. `target` is the complete rule
+    // for this breakpoint, so a property missing from it is a property this
+    // frame does not want. Falling back to base kept the mobile frame's pinned
+    // height and width on the desktop layout, where both should be automatic:
+    // the navbar stayed 390px wide at 1920 and every section kept its phone
+    // height.
+    out[k] = "initial";
   }
   return out;
 }
 
-// Whether two nodes can stand for the same element at all. Sharing a name is not
-// enough on its own: a mobile frame's hero image and a laptop frame's text panel
-// were both called "Sub Container", and pairing them exported the panel as a
-// stretched image. Same Figma type, and a leaf only ever pairs with a leaf.
+// The first few strings in a node's subtree, as its content fingerprint. Cached
+// per node: matching compares the same nodes many times over.
+const TEXT_SIG = new WeakMap<SceneNode, string[]>();
+const SIG_MAX = 6;
+
+function textSig(node: SceneNode): string[] {
+  const hit = TEXT_SIG.get(node);
+  if (hit) return hit;
+  const out: string[] = [];
+  const walk = (n: SceneNode) => {
+    if (out.length >= SIG_MAX) return;
+    if (n.type === "TEXT") {
+      const c = n.characters;
+      if (c) out.push(c.trim().slice(0, 40));
+      return;
+    }
+    if ("children" in n) for (const k of n.children) walk(k);
+  };
+  walk(node);
+  TEXT_SIG.set(node, out);
+  return out;
+}
+
+// Whether two nodes can stand for the same element at all.
+//
+// Sharing a name is not enough. Every frame in a real file reuses "Container"
+// and "Sub Container" for unrelated things, so identity has to come from what a
+// node IS as well as what it is called:
+//
+//   - the same Figma type, and a leaf only ever pairs with a leaf. A mobile hero
+//     image and a laptop text panel were both "Sub Container", and pairing them
+//     exported the panel as a stretched image.
+//   - the same content, for containers. A testimonials heading and the list of
+//     testimonial cards were both "Container", so the cards took the heading's
+//     slot and the heading was appended after them. A hamburger button and a
+//     "Contact Us" button paired the same way, one having no text at all.
+//
+// Content is only used to separate CONTAINERS. A text node whose copy differs
+// between frames is still one node with two strings, which the emitter toggles;
+// that reads far better than two duplicated elements.
 export function compatible(a: SceneNode, b: SceneNode): boolean {
   if (a.type !== b.type) return false;
   const kids = (n: SceneNode) => ("children" in n ? n.children.length : 0);
-  return (kids(a) === 0) === (kids(b) === 0);
+  if ((kids(a) === 0) !== (kids(b) === 0)) return false;
+  if (kids(a) === 0) return true;
+
+  const sa = textSig(a);
+  const sb = textSig(b);
+  // One carries copy and the other carries none: different things.
+  if ((sa.length === 0) !== (sb.length === 0)) return false;
+  // Both carry copy but share none of it: also different things.
+  if (sa.length > 0 && !sa.some((s) => sb.includes(s))) return false;
+  return true;
 }
 
 // For each base child, its counterpart in otherKids. Identity is the name, with

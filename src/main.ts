@@ -5,23 +5,52 @@
 import { generate, generateResponsive } from "./generate";
 import { planExport } from "./responsive";
 import { sanitizeFileName } from "./values";
+import { dumpFixture } from "./fixture";
 
 figma.showUI(__html__, { width: 600, height: 780, themeColors: true });
 
-figma.ui.onmessage = async (msg: {
-  type: string;
-  semantic?: boolean;
-  tailwind?: boolean;
-}) => {
-  if (msg.type !== "export") return;
-
-  const nodes = figma.currentPage.selection.filter(
+const selectedFrames = () =>
+  figma.currentPage.selection.filter(
     (n) =>
       n.type === "FRAME" ||
       n.type === "COMPONENT" ||
       n.type === "INSTANCE" ||
       n.type === "GROUP",
   );
+
+figma.ui.onmessage = async (msg: {
+  type: string;
+  semantic?: boolean;
+  tailwind?: boolean;
+}) => {
+  // A fixture is the selection's node tree as JSON, with no pixels. It replays
+  // the design outside Figma so a layout bug can be reproduced and fixed against
+  // the real tree instead of guessing from an exported file.
+  if (msg.type === "fixture") {
+    const nodes = selectedFrames();
+    if (nodes.length === 0) {
+      figma.ui.postMessage({ type: "error", message: "Select a frame first." });
+      return;
+    }
+    try {
+      figma.ui.postMessage({
+        type: "fixture",
+        name: sanitizeFileName(nodes[0].name),
+        json: dumpFixture(nodes),
+        summary: `${nodes.length} frame${nodes.length === 1 ? "" : "s"} dumped`,
+      });
+    } catch (e) {
+      figma.ui.postMessage({
+        type: "error",
+        message: "Dump failed: " + (e as Error).message,
+      });
+    }
+    return;
+  }
+
+  if (msg.type !== "export") return;
+
+  const nodes = selectedFrames();
 
   const plan = planExport(nodes);
   if (plan.kind === "error") {
@@ -32,6 +61,8 @@ figma.ui.onmessage = async (msg: {
   const opts = {
     semantic: msg.semantic !== false,
     tailwind: msg.tailwind === true,
+    onProgress: (message: string) =>
+      figma.ui.postMessage({ type: "progress", message }),
   };
 
   try {
@@ -54,10 +85,13 @@ figma.ui.onmessage = async (msg: {
     figma.ui.postMessage({
       type: "result",
       name,
-      summary,
+      summary: [summary, out.note].filter(Boolean).join(". ") || undefined,
       combined: out.combined,
       html: out.html,
       css: out.css,
+      // Image files travel as raw bytes; the panel is where a zip can be built
+      // and where a browser can downscale them.
+      assets: out.assets,
     });
   } catch (e) {
     figma.ui.postMessage({

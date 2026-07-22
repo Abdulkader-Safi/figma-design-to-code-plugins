@@ -11,10 +11,18 @@ const MIXED = Symbol("figma.mixed");
 (globalThis as unknown as { figma: unknown }).figma = {
   mixed: MIXED,
   base64Encode: () => "STUB",
+  getImageByHash: (hash: string) =>
+    hash
+      ? {
+          getBytesAsync: async () => new Uint8Array([0, 0, 0]),
+          getSizeAsync: async () => ({ width: 64, height: 64 }),
+        }
+      : null,
 };
 
 const { buildMergedTree } = await import("../src/merge-build");
 const { emitMerged } = await import("../src/merge-emit");
+const { createImageStore } = await import("../src/paint");
 
 function assert(cond: boolean, msg: string) {
   if (!cond) throw new Error("FAIL: " + msg);
@@ -164,6 +172,64 @@ assert(
   order.indexOf(panel!.className) < order.indexOf(imgs[0].className),
   `panel before image: ${order}`,
 );
+
+// Fill layers have to survive the merge. They were being dropped, so a
+// responsive export gave a blended section `isolation: isolate` and no
+// background at all: the node isolated against nothing.
+const banner = (w: number, blend: string) =>
+  column("Banner", [text("T", "hi")], {
+    width: w,
+    height: 200,
+    fills: [
+      {
+        type: "IMAGE",
+        visible: true,
+        scaleMode: "FILL",
+        imageHash: "tex",
+        opacity: 1,
+        blendMode: blend,
+      },
+      { type: "SOLID", visible: true, color: { r: 0, g: 0, b: 0 }, opacity: 0.5 },
+    ],
+  });
+const layerTree = await buildMergedTree(
+  [
+    {
+      frame: column("Page", [banner(390, "OVERLAY")], { width: 390, height: 900 }) as never,
+      token: "base",
+      variant: "Mobile",
+      width: 390,
+    },
+    {
+      frame: column("Page", [banner(1440, "OVERLAY")], { width: 1440, height: 800 }) as never,
+      token: "lg",
+      variant: "Laptop",
+      width: 1440,
+    },
+  ] as never,
+  { semantic: true, backdrop: "#101010", images: createImageStore() },
+  noop,
+);
+const merged = layerTree.children[0];
+const layers = merged.children.filter((c) => c.className.includes("-fill"));
+assert(layers.length === 3, `backdrop plus two paints came through, got ${layers.length}`);
+assert(layers[0].className.endsWith("-fillbase"), "the backdrop layer sorts first");
+assert(
+  layers.every((l) => l.presentAt.join(",") === "base,lg"),
+  "each layer is present at both breakpoints",
+);
+assert(
+  merged.children.indexOf(layers[2]) < merged.children.findIndex((c) => c.kind === "text"),
+  "layers render before the real children",
+);
+const layerCss = emitMerged(layerTree, {
+  title: "L",
+  tailwind: false,
+  fonts: new Map(),
+  pageBg: "#101010",
+}).combined;
+assert(layerCss.includes("mix-blend-mode: overlay"), "the blend mode reaches the document");
+assert(layerCss.includes("background: #101010"), "the backdrop colour reaches the document");
 
 // And the whole thing emits: capped, centred, with the copy intact.
 const out = emitMerged(tree, {

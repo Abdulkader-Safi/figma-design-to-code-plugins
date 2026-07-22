@@ -12,9 +12,14 @@ const css = join(root, "dist/ui.css");
 const out = join(root, "ui.html");
 
 const stylesheet = readFileSync(css, "utf8").trim();
-const html = readFileSync(template, "utf8").replace(
-  "/* __TAILWIND_CSS__ */",
-  () => stylesheet, // function form: avoids $-pattern expansion in the CSS
-);
+// package.json is the single source of the version; the panel shows it so a bug
+// report can name the build it came from.
+const { version } = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+const html = readFileSync(template, "utf8")
+  .replace(
+    "/* __TAILWIND_CSS__ */",
+    () => stylesheet, // function form: avoids $-pattern expansion in the CSS
+  )
+  .replaceAll("__VERSION__", version);
 writeFileSync(out, html);
 console.log(`ui.html written (${(html.length / 1024).toFixed(1)} kb)`);

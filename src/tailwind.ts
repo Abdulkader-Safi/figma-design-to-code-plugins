@@ -301,6 +301,9 @@ function twUtil(k: string, v: string): string {
     case "border-radius":
       return radiusUtil(v);
     case "background":
+      // A bare var() or url() reads as a colour to Tailwind, so an image
+      // reference needs the explicit type hint.
+      if (v.startsWith("var(") || v.startsWith("url(")) return `bg-[image:${a}]`;
       return v.startsWith("#") ? `bg-[${v}]` : `bg-[${a}]`;
     case "color":
       return `text-[${v}]`;

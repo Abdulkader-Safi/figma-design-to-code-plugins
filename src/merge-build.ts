@@ -15,6 +15,7 @@ import type { Token } from "./breakpoints";
 import type { FrameVariant } from "./responsive";
 import { type MergedNode, appendedGroups, matchChildren } from "./merge-model";
 import { nodeRule, type NodeStyle } from "./generate";
+import type { ImageStore } from "./paint";
 import { headingMap } from "./semantic";
 
 const ORDER: Token[] = ["base", "sm", "md", "lg", "xl", "2xl"];
@@ -31,7 +32,7 @@ const visibleChildren = (n: SceneNode): SceneNode[] =>
 
 export async function buildMergedTree(
   variants: FrameVariant[],
-  opts: { semantic: boolean },
+  opts: { semantic: boolean; images?: ImageStore; backdrop?: string | null },
   addFont: (family: string, weight: number) => void,
 ): Promise<MergedNode> {
   const headingsByToken = new Map<Token, Map<number, string>>();
@@ -82,6 +83,8 @@ export async function buildMergedTree(
         {
           headings: headingsByToken.get(t) ?? new Map(),
           semantic: opts.semantic,
+          images: opts.images,
+          backdrop: opts.backdrop,
           addFont,
           pageW: pageWByToken.get(t) ?? 0,
           topBand,
@@ -121,6 +124,36 @@ export async function buildMergedTree(
 
     // Only element nodes carry children.
     if (primary.kind !== "element") return merged;
+
+    // Fill layers ride along as synthetic children, so they inherit the whole
+    // per-breakpoint machinery: a layer that only exists in the desktop frame
+    // hides at the smaller ones exactly the way a real node would. They are
+    // matched by role, not by index, because a frame without a blended paint has
+    // no backdrop layer and every index below it would shift.
+    const layerKeys: string[] = [];
+    const layerRules = new Map<string, Partial<Record<Token, Rule>>>();
+    for (const t of presentTokens) {
+      for (const layer of styleByToken.get(t)!.layers ?? []) {
+        if (!layerRules.has(layer.key)) {
+          layerRules.set(layer.key, {});
+          layerKeys.push(layer.key);
+        }
+        layerRules.get(layer.key)![t] = layer.rule;
+      }
+    }
+    // "base" first, then the paints in their own order: bottom of the stack to
+    // the top, which is also the order a later sibling paints over an earlier.
+    layerKeys.sort((a, b) =>
+      a === "base" ? -1 : b === "base" ? 1 : Number(a) - Number(b),
+    );
+    const fillLayers: MergedNode[] = layerKeys.map((key) => ({
+      tag: "div",
+      className: `${merged.className}-fill${key}`,
+      kind: "element" as const,
+      rulesByToken: layerRules.get(key)!,
+      presentAt: ORDER.filter((t) => layerRules.get(key)![t] !== undefined),
+      children: [],
+    }));
 
     const tag = primary.tag;
     const childInteractive = interactive || tag === "a" || tag === "button";
@@ -170,7 +203,7 @@ export async function buildMergedTree(
       if (c) children.splice(Math.min(group.index, children.length), 0, c);
     }
 
-    merged.children = children;
+    merged.children = [...fillLayers, ...children];
     return merged;
   }
 

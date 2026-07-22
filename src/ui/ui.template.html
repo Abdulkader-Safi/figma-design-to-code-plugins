@@ -20,8 +20,8 @@
     Export your <em class="text-clay not-italic">frame</em>
 </h1>
 <p class="m-0 mb-4 w-full leading-[1.5] text-muted">
-    Select a frame, then export it to a self-contained HTML file with layout,
-    colors, and Google fonts.
+    Select a frame, then export it to HTML and CSS with real layout, colors,
+    and Google fonts. Pages with images come out as a zip.
 </p>
 
 <div class="mb-[18px] flex items-stretch justify-between gap-5">
@@ -65,12 +65,21 @@
 
 <button
     id="export"
-    class="w-full cursor-pointer rounded-[9px] border-0 bg-clay px-4 py-3 font-semibold text-[#0c0b0a] transition-colors duration-150 hover:bg-clay-hover"
+    class="w-full cursor-pointer rounded-[9px] border-0 bg-clay px-4 py-3 font-semibold text-[#0c0b0a] transition-colors duration-150 hover:bg-clay-hover disabled:cursor-wait disabled:opacity-60"
 >
     Export selected frame
 </button>
 
-<div id="status" class="status"></div>
+<div class="mt-2 flex items-baseline justify-between gap-3">
+    <div id="status" class="status"></div>
+    <button
+        id="fixture"
+        class="shrink-0 cursor-pointer border-0 bg-transparent p-0 font-mono text-[10px] uppercase tracking-[0.18em] text-muted transition-colors duration-150 hover:text-text"
+        title="Save the selected frame's node tree as JSON, for reproducing a layout bug outside Figma"
+    >
+        Dump fixture
+    </button>
+</div>
 
 <div class="hidden gap-1.5 mb-2" id="tabs">
     <button class="tab active" data-mode="combined">HTML + CSS</button>
@@ -99,22 +108,37 @@
 </div>
 
 <footer
-    class="mt-3.5 flex shrink-0 items-center justify-between gap-3 border-t border-hairline pb-[15px] pt-[13px] font-mono text-[10px]"
+    class="mt-3.5 flex shrink-0 items-center justify-between gap-4 border-t border-hairline pb-[15px] pt-[13px] font-mono text-[10px]"
 >
-    <a
-        class="text-muted no-underline transition-colors duration-150 hover:text-text"
-        href="https://abdulkadersafi.com"
-        target="_blank"
-        rel="noopener"
-        >Created by Abdulkader Safi</a
-    >
-    <a
-        class="font-medium text-clay no-underline hover:underline"
-        href="https://ko-fi.com/abdulkadersafi"
-        target="_blank"
-        rel="noopener"
-        >&#9829; Support on Ko-fi</a
-    >
+    <div class="flex min-w-0 items-center gap-[7px]">
+        <a
+            class="truncate text-muted no-underline transition-colors duration-150 hover:text-text"
+            href="https://abdulkadersafi.com"
+            target="_blank"
+            rel="noopener"
+            >Created by Abdulkader Safi</a
+        >
+        <span class="text-dim" aria-hidden="true">/</span>
+        <!-- Substituted from package.json at build time, so a bug report can
+             name the version it came from. -->
+        <span class="shrink-0 text-dim">v__VERSION__</span>
+    </div>
+    <div class="flex shrink-0 items-center gap-3.5">
+        <a
+            class="text-muted no-underline transition-colors duration-150 hover:text-text"
+            href="https://design-to-html.abdulkadersafi.com/"
+            target="_blank"
+            rel="noopener"
+            >Docs</a
+        >
+        <a
+            class="font-medium text-clay no-underline hover:underline"
+            href="https://ko-fi.com/abdulkadersafi"
+            target="_blank"
+            rel="noopener"
+            >&#9829; Support on Ko-fi</a
+        >
+    </div>
 </footer>
 
 <script>
@@ -126,6 +150,7 @@
         css: "",
         mode: "combined",
         framework: "css",
+        assets: [],
     };
 
     const raw = () => state[state.mode];
@@ -211,17 +236,146 @@
         return out;
     }
 
+
+    // --- image bundle ---------------------------------------------------
+    // Source assets come out of Figma at their original resolution, which for a
+    // background texture can be tens of megabytes. Redraw each one through a
+    // canvas, capped on its longest side, so the bundle is a sane size. If
+    // anything fails, the original bytes are kept rather than losing the image.
+    const MAX_EDGE = 2400;
+
+    async function shrink(bytes) {
+        try {
+            const blob = new Blob([bytes], { type: "image/png" });
+            const bmp = await createImageBitmap(blob);
+            const scale = Math.min(1, MAX_EDGE / Math.max(bmp.width, bmp.height));
+            if (scale === 1 && blob.size < 1_500_000) {
+                bmp.close();
+                return bytes;
+            }
+            const w = Math.max(1, Math.round(bmp.width * scale));
+            const h = Math.max(1, Math.round(bmp.height * scale));
+            const canvas = document.createElement("canvas");
+            canvas.width = w;
+            canvas.height = h;
+            canvas.getContext("2d").drawImage(bmp, 0, 0, w, h);
+            bmp.close();
+            const out = await new Promise((res) =>
+                canvas.toBlob(res, "image/png"),
+            );
+            if (!out || out.size >= bytes.length) return bytes;
+            return new Uint8Array(await out.arrayBuffer());
+        } catch (e) {
+            return bytes;
+        }
+    }
+
+    // Minimal ZIP writer, stored (uncompressed) entries. PNG is already
+    // compressed, so deflating again would buy almost nothing and cost a lot of
+    // code. Produces a spec-valid archive every unzip tool reads.
+    const CRC_TABLE = (() => {
+        const t = new Uint32Array(256);
+        for (let i = 0; i < 256; i++) {
+            let c = i;
+            for (let k = 0; k < 8; k++)
+                c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+            t[i] = c >>> 0;
+        }
+        return t;
+    })();
+
+    function crc32(buf) {
+        let c = 0xffffffff;
+        for (let i = 0; i < buf.length; i++)
+            c = CRC_TABLE[(c ^ buf[i]) & 0xff] ^ (c >>> 8);
+        return (c ^ 0xffffffff) >>> 0;
+    }
+
+    function zip(files) {
+        const enc = new TextEncoder();
+        const chunks = [];
+        const central = [];
+        let offset = 0;
+
+        for (const f of files) {
+            const name = enc.encode(f.path);
+            const data =
+                f.bytes instanceof Uint8Array ? f.bytes : enc.encode(f.bytes);
+            const sum = crc32(data);
+
+            const local = new DataView(new ArrayBuffer(30));
+            local.setUint32(0, 0x04034b50, true); // local file header
+            local.setUint16(4, 20, true); // version needed
+            local.setUint16(6, 0x0800, true); // UTF-8 names
+            local.setUint16(8, 0, true); // stored
+            local.setUint32(14, sum, true);
+            local.setUint32(18, data.length, true);
+            local.setUint32(22, data.length, true);
+            local.setUint16(26, name.length, true);
+            chunks.push(new Uint8Array(local.buffer), name, data);
+
+            const dir = new DataView(new ArrayBuffer(46));
+            dir.setUint32(0, 0x02014b50, true); // central directory header
+            dir.setUint16(4, 20, true);
+            dir.setUint16(6, 20, true);
+            dir.setUint16(8, 0x0800, true);
+            dir.setUint16(10, 0, true);
+            dir.setUint32(16, sum, true);
+            dir.setUint32(20, data.length, true);
+            dir.setUint32(24, data.length, true);
+            dir.setUint16(28, name.length, true);
+            dir.setUint32(42, offset, true);
+            central.push(new Uint8Array(dir.buffer), name);
+
+            offset += 30 + name.length + data.length;
+        }
+
+        const dirBytes = central.reduce((n, c) => n + c.length, 0);
+        const end = new DataView(new ArrayBuffer(22));
+        end.setUint32(0, 0x06054b50, true); // end of central directory
+        end.setUint16(8, files.length, true);
+        end.setUint16(10, files.length, true);
+        end.setUint32(12, dirBytes, true);
+        end.setUint32(16, offset, true);
+
+        return new Blob([...chunks, ...central, new Uint8Array(end.buffer)], {
+            type: "application/zip",
+        });
+    }
+
+    function saveBlob(blob, filename) {
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(a.href);
+    }
+
     // --- render + actions ---
+    // Highlighting walks the whole string. A page with inlined images runs to
+    // tens of megabytes, and colouring that locks the panel for minutes, so past
+    // this size the preview is skipped. Copy and download are unaffected.
+    const PREVIEW_LIMIT = 2 * 1024 * 1024;
+
     function render() {
         document
             .querySelectorAll("#tabs .tab")
             .forEach((t) =>
                 t.classList.toggle("active", t.dataset.mode === state.mode),
             );
-        $("output").innerHTML =
-            state.mode === "css" ? hlCSS(raw()) : hlHTML(raw());
+        const src = raw();
+        if (src.length > PREVIEW_LIMIT) {
+            $("output").textContent =
+                "Preview skipped: " +
+                Math.round(src.length / 1048576) +
+                " MB of output, mostly inlined images.\nUse Copy or Download to get the file.";
+        } else {
+            $("output").innerHTML =
+                state.mode === "css" ? hlCSS(src) : hlHTML(src);
+        }
         $("output").scrollTop = 0;
-        $("download").textContent = "Download ." + ext();
+        $("download").textContent =
+            state.assets.length > 0 ? "Download .zip" : "Download ." + ext();
     }
 
     document.querySelectorAll("#tabs .tab").forEach((t) => {
@@ -256,6 +410,15 @@
     });
 
     $("export").onclick = () => {
+        // Release the previous run first. A page with images holds tens of
+        // megabytes of bytes here, and stacking a second export on top of the
+        // first is what makes the panel feel unresponsive.
+        state.assets = [];
+        state.combined = state.html = state.css = "";
+        $("output").textContent = "";
+        show(false);
+
+        $("export").disabled = true;
         setStatus("Generating…");
         parent.postMessage(
             {
@@ -267,6 +430,11 @@
             },
             "*",
         );
+    };
+
+    $("fixture").onclick = () => {
+        setStatus("Dumping node tree…");
+        parent.postMessage({ pluginMessage: { type: "fixture" } }, "*");
     };
 
     $("copy").onclick = () => {
@@ -285,27 +453,83 @@
         setStatus("Copied the " + what + " to clipboard.");
     };
 
-    $("download").onclick = () => {
-        const type = state.mode === "css" ? "text/css" : "text/html";
-        const blob = new Blob([raw()], { type });
-        const a = document.createElement("a");
-        a.href = URL.createObjectURL(blob);
-        a.download = state.name + "." + ext();
-        a.click();
-        URL.revokeObjectURL(a.href);
+    $("download").onclick = async () => {
+        // No images: the document is self-contained, so hand over the one file.
+        if (state.assets.length === 0) {
+            const type = state.mode === "css" ? "text/css" : "text/html";
+            saveBlob(new Blob([raw()], { type }), state.name + "." + ext());
+            return;
+        }
+
+        const btn = $("download");
+        btn.disabled = true;
+        try {
+            const files = [];
+            let done = 0;
+            for (const a of state.assets) {
+                setStatus(
+                    "Packing images: " + ++done + " of " + state.assets.length,
+                );
+                files.push({ path: a.path, bytes: await shrink(a.bytes) });
+            }
+
+            // Split output: a document that links its stylesheet, beside the
+            // images it references. That is the shape a build expects.
+            if (state.framework === "css") {
+                files.unshift(
+                    { path: "index.html", bytes: state.html },
+                    { path: "styles.css", bytes: state.css },
+                );
+            } else {
+                files.unshift({ path: "index.html", bytes: state.combined });
+            }
+
+            const blob = zip(files);
+            saveBlob(blob, state.name + ".zip");
+            setStatus(
+                "Saved " +
+                    state.name +
+                    ".zip — " +
+                    files.length +
+                    " files, " +
+                    Math.max(1, Math.round(blob.size / 1048576)) +
+                    " MB.",
+            );
+        } catch (e) {
+            setStatus("Could not build the zip: " + e.message, true);
+        } finally {
+            btn.disabled = false;
+        }
     };
 
     onmessage = (e) => {
         const msg = e.data.pluginMessage;
         if (!msg) return;
+        if (msg.type === "progress") {
+            setStatus(msg.message);
+            return;
+        }
+        // Anything that is not progress ends the run.
+        $("export").disabled = false;
         if (msg.type === "error") {
             setStatus(msg.message, true);
             show(false);
+        } else if (msg.type === "fixture") {
+            // Straight to disk: a fixture is for sending on, not for reading here.
+            const blob = new Blob([msg.json], { type: "application/json" });
+            const a = document.createElement("a");
+            a.href = URL.createObjectURL(blob);
+            a.download = msg.name + ".fixture.json";
+            a.click();
+            URL.revokeObjectURL(a.href);
+            const kb = Math.round(msg.json.length / 1024);
+            setStatus(msg.summary + ". " + kb + " KB saved.");
         } else if (msg.type === "result") {
             state.name = msg.name || "export";
             state.combined = msg.combined;
             state.html = msg.html;
             state.css = msg.css;
+            state.assets = msg.assets || [];
             state.mode = "combined";
             show(true);
             render();

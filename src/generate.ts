@@ -9,12 +9,25 @@ import {
   ignoresAutoLayout,
   isVectorLike,
   isIconContainer,
-  hasImageFill,
+  isImageLeaf,
   hugsText,
 } from "./nodes";
 import { headingMap, textTag, containerTag } from "./semantic";
-import { positionAndSize, applyLayout } from "./layout";
+import {
+  positionAndSize,
+  applyLayout,
+  overlapMargin,
+  overlapZIndex,
+  NEGATIVE_GAP,
+} from "./layout";
 import { applyBoxDecoration } from "./decoration";
+import {
+  fillStack,
+  createImageStore,
+  type FillLayer,
+  type ImageStore,
+  type Asset,
+} from "./paint";
 import { styleRule, ALIGN } from "./text";
 import { toTailwind, fontSlug } from "./tailwind";
 import { fontLink, docShell } from "./document";
@@ -37,12 +50,32 @@ function bleedBefore(bg: string): string {
   );
 }
 
+export interface GenerateOpts {
+  semantic: boolean;
+  tailwind: boolean;
+  // Called as images are inlined, so a large document reports progress instead
+  // of looking frozen.
+  onProgress?: (message: string) => void;
+}
+
 export async function generate(
   root: SceneNode,
-  opts: { semantic: boolean; tailwind: boolean },
-): Promise<{ combined: string; html: string; css: string }> {
+  opts: GenerateOpts,
+): Promise<{
+  combined: string;
+  html: string;
+  css: string;
+  note?: string;
+  assets: Asset[];
+}> {
   const cssRules: string[] = [];
   const fonts = new Map<string, Set<number>>(); // family -> weights
+  // Distinct images for this document. Each is encoded once and referenced by
+  // custom property, so a texture painted by six nodes is inlined once.
+  const images = createImageStore({
+    onProgress: (done, bytes) =>
+      opts.onProgress?.(`Inlining images: ${done} (${Math.round(bytes / 1048576)} MB)`),
+  });
   let counter = 0;
 
   // The page width and background drive full-width sections: the surround gets
@@ -99,12 +132,18 @@ export async function generate(
     depth: number,
     parentTag: string,
     interactive: boolean,
+    inherited: Rule = {},
+    // The nearest solid colour painted behind this node. Blend modes composite
+    // against it, so it has to travel down the tree.
+    backdrop: string | null = pageBg,
   ): Promise<string> {
     if ("visible" in node && node.visible === false) return "";
 
     const cls = className(node);
     const indent = "  ".repeat(depth);
-    const rule: Rule = {};
+    // Rules the parent imposes on this child: the sibling margin that stands in
+    // for a negative gap, and the paint order that overlap makes visible.
+    const rule: Rule = { ...inherited };
     let hasBefore = false; // CSS mode: this node gets a full-bleed ::before rule
     let beforeUtils = ""; // Tailwind mode: the same bleed as before:* utilities
     // Out of the flow either because the parent has no auto-layout at all, or
@@ -116,8 +155,9 @@ export async function generate(
     // Landmark bands (section/header/footer/main) only apply at the top level.
     const topBand = parent === root;
     // Exported whole as one asset, so any rotation is baked into the asset.
-    const asSvg = isVectorLike(node) || isIconContainer(node);
-    const asImg = !asSvg && hasImageFill(node);
+    // parent !== null: the page root is never collapsed into one picture.
+    const asSvg = isVectorLike(node) || (parent !== null && isIconContainer(node));
+    const asImg = !asSvg && isImageLeaf(node);
 
     positionAndSize(node, parent, absolute, asSvg || asImg, rule);
     if (
@@ -149,9 +189,9 @@ export async function generate(
           format: "PNG",
           constraint: { type: "SCALE", value: 2 },
         });
-        const b64 = figma.base64Encode(bytes);
+        const src = images.addBytes(bytes);
         rule["object-fit"] = "cover";
-        return `${indent}<img class="${emitClass(cls, rule)}" src="data:image/png;base64,${b64}" alt="${escapeHtml(node.name)}" />`;
+        return `${indent}<img class="${emitClass(cls, rule)}" src="${src}" alt="${escapeHtml(node.name)}" />`;
       } catch {
         return `${indent}<div class="${emitClass(cls, rule)}"></div>`;
       }
@@ -217,6 +257,21 @@ export async function generate(
     applyBoxDecoration(node, rule);
     applyLayout(node, rule);
 
+    // Fills. A single plain paint lands on `background`; a stack becomes one
+    // overlay element per paint, since CSS cannot fade a single background
+    // layer. Emitted before the real children so later siblings paint on top,
+    // matching Figma's bottom-to-top fills array.
+    const fill =
+      "fills" in node
+        ? await fillStack(node.fills, images.resolve, backdrop)
+        : { rule: {}, layers: [] };
+    Object.assign(rule, fill.rule);
+    const layerHtml = (fill.layers as FillLayer[]).map(
+      (l) => `${indent}  <div class="${emitClass(`${cls}-fill${l.key}`, l.rule)}"></div>`,
+    );
+    const bg = typeof rule.background === "string" ? rule.background : null;
+    const childBackdrop = bg && bg.startsWith("#") ? bg : backdrop;
+
     // The page root must not clip: a fixed-width overflow:hidden root would trap
     // every full-width section inside the design column and cancel the bleed.
     if (parent === null) delete rule.overflow;
@@ -270,8 +325,13 @@ export async function generate(
         ? containerTag(node, topBand)
         : "div";
     const kids = "children" in node ? node.children.slice() : [];
+    // Not a CSS property: it tells this node's children what margin to carry.
+    const negativeGap = rule[NEGATIVE_GAP] !== undefined;
+    delete rule[NEGATIVE_GAP];
     if (kids.length === 0) {
-      return `${indent}<${tag} class="${withBleed(emitClass(cls, rule, hasBefore))}"></${tag}>`;
+      const open = `${indent}<${tag} class="${withBleed(emitClass(cls, rule, hasBefore))}">`;
+      if (layerHtml.length === 0) return `${open}</${tag}>`;
+      return `${open}\n${layerHtml.join("\n")}\n${indent}</${tag}>`;
     }
 
     // An absolutely-placed child measures left/top from its nearest positioned
@@ -284,9 +344,12 @@ export async function generate(
     const c = withBleed(emitClass(cls, rule, hasBefore));
 
     const childInteractive = interactive || tag === "a" || tag === "button";
-    const childHtml: string[] = [];
-    for (const child of kids) {
-      const h = await build(child, node, depth + 1, tag, childInteractive);
+    const childHtml: string[] = [...layerHtml];
+    for (let i = 0; i < kids.length; i++) {
+      const extra = negativeGap
+        ? { ...overlapMargin(node, i), ...overlapZIndex(node, i, kids.length) }
+        : {};
+      const h = await build(kids[i], node, depth + 1, tag, childInteractive, extra, childBackdrop);
       if (h) childHtml.push(h);
     }
     return `${indent}<${tag} class="${c}">\n${childHtml.join("\n")}\n${indent}</${tag}>`;
@@ -294,6 +357,12 @@ export async function generate(
 
   const body = await build(root, null, 3, "", false);
   const links = fontLink(fonts);
+
+  const files = images.assets();
+  const imageNote = (): string | undefined =>
+    files.length
+      ? `${files.length} image${files.length === 1 ? "" : "s"} (${Math.round(images.bytes() / 1048576)} MB)`
+      : undefined;
 
   // Tailwind mode: every style is a utility. The v4 browser CDN builds the
   // stylesheet at runtime (its preflight covers the resets). The only non-utility
@@ -317,7 +386,7 @@ export async function generate(
       `  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>\n` +
       `  <style type="text/tailwindcss">\n${twConfig}\n  </style>`;
     const doc = docShell(root.name, links, head, body, bodyClass);
-    return { combined: doc, html: doc, css: "" };
+    return { combined: doc, html: doc, css: "", note: imageNote(), assets: files };
   }
 
   const bodyRule = `body { display: flex; justify-content: center;${pageBg ? ` background: ${pageBg};` : ""} }`;
@@ -339,6 +408,8 @@ export async function generate(
     combined: docShell(root.name, links, styleBlock, body),
     html: docShell(root.name, links, linkBlock, body),
     css: stylesheet,
+    note: imageNote(),
+    assets: files,
   };
 }
 
@@ -347,9 +418,19 @@ export async function generate(
 // frames; the page background and title come from the base (smallest) frame.
 export async function generateResponsive(
   variants: FrameVariant[],
-  opts: { semantic: boolean; tailwind: boolean },
-): Promise<{ combined: string; html: string; css: string }> {
+  opts: GenerateOpts,
+): Promise<{
+  combined: string;
+  html: string;
+  css: string;
+  note?: string;
+  assets: Asset[];
+}> {
   const fonts = new Map<string, Set<number>>();
+  const images = createImageStore({
+    onProgress: (done, bytes) =>
+      opts.onProgress?.(`Exporting images: ${done} (${Math.round(bytes / 1048576)} MB)`),
+  });
   const addFont = (family: string, weight: number) => {
     if (!fonts.has(family)) fonts.set(family, new Set());
     fonts.get(family)!.add(weight);
@@ -361,13 +442,25 @@ export async function generateResponsive(
       ? solidFill(base.fills) || gradientFill(base.fills)
       : null;
 
-  const tree = await buildMergedTree(variants, { semantic: opts.semantic }, addFont);
-  return emitMerged(tree, {
+  const tree = await buildMergedTree(
+    variants,
+    { semantic: opts.semantic, images, backdrop: pageBg },
+    addFont,
+  );
+  const out = emitMerged(tree, {
     title: parseFrameName(base.name).prefix || base.name,
     tailwind: opts.tailwind,
     fonts,
     pageBg,
   });
+  const files = images.assets();
+  return {
+    ...out,
+    assets: files,
+    note: files.length
+      ? `${files.length} image${files.length === 1 ? "" : "s"} (${Math.round(images.bytes() / 1048576)} MB)`
+      : undefined,
+  };
 }
 
 // The style, tag, and content a node would get in single-frame export, computed
@@ -380,6 +473,7 @@ export interface NodeStyle {
   text?: string; // text characters (kind text)
   href?: string; // link target when tag is "a"
   bleedBg?: string; // full-viewport bleed background; the emitter paints it
+  layers?: FillLayer[]; // one overlay element per paint, when the fills stack
 }
 
 export interface NodeCtx {
@@ -389,6 +483,8 @@ export interface NodeCtx {
   pageW: number; // the containing frame's width, for full-bleed detection
   topBand: boolean; // parent is the frame root (landmark bands apply)
   inList: boolean; // parent is ul/ol (children become li)
+  images?: ImageStore; // shared image block; absent means skip image fills
+  backdrop?: string | null; // nearest solid colour behind the node, for blending
   interactive: boolean; // inside an a/button (text links are suppressed)
 }
 
@@ -409,8 +505,8 @@ export async function nodeRule(
   const rule: Rule = {};
   const absolute =
     parent !== null && (!isAutoLayout(parent) || ignoresAutoLayout(node));
-  const asSvg = isVectorLike(node) || isIconContainer(node);
-  const asImg = !asSvg && hasImageFill(node);
+  const asSvg = isVectorLike(node) || (parent !== null && isIconContainer(node));
+  const asImg = !asSvg && isImageLeaf(node);
 
   positionAndSize(node, parent, absolute, asSvg || asImg, rule);
   if (
@@ -442,12 +538,12 @@ export async function nodeRule(
         format: "PNG",
         constraint: { type: "SCALE", value: 2 },
       });
-      const b64 = figma.base64Encode(bytes);
+      const src = ctx.images ? ctx.images.addBytes(bytes) : "";
       return {
         rule,
         tag: "img",
         kind: "asset",
-        asset: `src="data:image/png;base64,${b64}" alt="${escapeHtml(node.name)}"`,
+        asset: `src="${src}" alt="${escapeHtml(node.name)}"`,
       };
     } catch {
       return { rule, tag: "div", kind: "element" };
@@ -505,6 +601,22 @@ export async function nodeRule(
 
   applyBoxDecoration(node, rule);
   applyLayout(node, rule);
+  // The merge emitter has no class name to hand yet, so layers are named by the
+  // caller; here they only need their rules and their order.
+  const fill =
+    "fills" in node
+      ? await fillStack(
+          node.fills,
+          // Not gated on exportAssets, unlike the SVG and PNG exports above. The
+          // store caches by image hash, so a repeat costs nothing, and skipping
+          // it left the background existing only at the primary breakpoint and
+          // disappearing at the others.
+          ctx.images ? ctx.images.resolve : async () => null,
+          ctx.backdrop,
+        )
+      : { rule: {}, layers: [] };
+  Object.assign(rule, fill.rule);
+  delete rule[NEGATIVE_GAP];
   if (parent === null) delete rule.overflow;
 
   let bleedBg: string | undefined;
@@ -531,5 +643,5 @@ export async function nodeRule(
     : ctx.semantic
       ? containerTag(node, ctx.topBand)
       : "div";
-  return { rule, tag, kind: "element", bleedBg };
+  return { rule, tag, kind: "element", bleedBg, layers: fill.layers };
 }

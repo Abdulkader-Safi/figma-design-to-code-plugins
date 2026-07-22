@@ -5,13 +5,13 @@
   "main": "code.js",
   "scripts": {
     "build": "npm run build:ui && npm run build:js",
-    "build:js": "esbuild src/main.ts --bundle --outfile=code.js --target=es2020",
+    "build:js": "esbuild src/main.ts --bundle --outfile=code.js --target=es2020 --define:__BUILD__=\"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'\"",
     "build:ui": "tailwindcss -i src/ui/styles.css -o dist/ui.css --minify && node scripts/build-ui.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "bun run test/gradient.ts && bun run test/layout.ts && bun run test/breakpoints.ts && bun run test/responsive.ts && bun run test/merge-model.ts && bun run test/merge-emit.ts && bun run test/merge-tree.ts",
+    "test": "bun run test/gradient.ts && bun run test/layout.ts && bun run test/breakpoints.ts && bun run test/responsive.ts && bun run test/merge-model.ts && bun run test/merge-emit.ts && bun run test/merge-tree.ts && bun run test/fixture.ts && bun run test/paint-layout.ts",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "watch": "esbuild src/main.ts --bundle --outfile=code.js --target=es2020 --watch"
+    "watch": "esbuild src/main.ts --bundle --outfile=code.js --target=es2020 --define:__BUILD__=\"'dev'\" --watch"
   },
   "author": "",
   "license": "",

@@ -69,6 +69,34 @@ export function positionAndSize(
     return;
   }
 
+  // A grid child is placed by its anchor and span, not by flex sizing. Figma's
+  // anchor indices are 0-based; CSS grid lines start at 1.
+  if ("layoutMode" in parent && (parent.layoutMode as string) === "GRID") {
+    const g = node as unknown as {
+      gridColumnAnchorIndex?: number;
+      gridRowAnchorIndex?: number;
+      gridColumnSpan?: number;
+      gridRowSpan?: number;
+      gridChildHorizontalAlign?: string;
+      gridChildVerticalAlign?: string;
+    };
+    const col = (g.gridColumnAnchorIndex ?? 0) + 1;
+    const row = (g.gridRowAnchorIndex ?? 0) + 1;
+    rule["grid-column"] = `${col} / span ${Math.max(1, g.gridColumnSpan ?? 1)}`;
+    rule["grid-row"] = `${row} / span ${Math.max(1, g.gridRowSpan ?? 1)}`;
+    const js = GRID_ALIGN[g.gridChildHorizontalAlign ?? ""];
+    const as = GRID_ALIGN[g.gridChildVerticalAlign ?? ""];
+    if (js) rule["justify-self"] = js;
+    if (as) rule["align-self"] = as;
+    // A track already sizes the cell, so only an explicitly fixed child pins its
+    // own box; HUG and FILL are the track's job.
+    if ("layoutSizingHorizontal" in node && node.layoutSizingHorizontal === "FIXED" && w !== undefined)
+      rule.width = `${w}px`;
+    if ("layoutSizingVertical" in node && node.layoutSizingVertical === "FIXED" && h !== undefined)
+      rule.height = `${h}px`;
+    return;
+  }
+
   // In an auto-layout parent: honour Figma's hug / fill / fixed sizing.
   const hParent = "layoutMode" in parent && parent.layoutMode === "HORIZONTAL";
   const vParent = "layoutMode" in parent && parent.layoutMode === "VERTICAL";
@@ -106,31 +134,148 @@ export function positionAndSize(
   if (mainSize !== "FILL") rule["flex-shrink"] = 0;
 }
 
+const PRIMARY: { [k: string]: string } = {
+  MIN: "flex-start",
+  CENTER: "center",
+  MAX: "flex-end",
+  SPACE_BETWEEN: "space-between",
+};
+const COUNTER: { [k: string]: string } = {
+  MIN: "flex-start",
+  CENTER: "center",
+  MAX: "flex-end",
+  BASELINE: "baseline",
+};
+
+// A Figma grid track -> a CSS track. HUG is fit-content(100%) per the API docs;
+// FLEX is the fr unit, which is what Figma's own "Flex" track means.
+function trackCss(t: { type: string; value?: number }): string {
+  if (t.type === "FLEX") return `${t.value ?? 1}fr`;
+  if (t.type === "FIXED") return `${Math.round(t.value ?? 0)}px`;
+  return "fit-content(100%)";
+}
+
+// Figma does not document the literal set for grid child alignment, so both the
+// MIN/MAX and START/END spellings are accepted and anything else is left alone.
+const GRID_ALIGN: { [k: string]: string } = {
+  MIN: "start",
+  START: "start",
+  CENTER: "center",
+  MAX: "end",
+  END: "end",
+  STRETCH: "stretch",
+  BASELINE: "baseline",
+};
+
+// Figma's grid auto layout. Its own gaps and track lists replace the flex
+// properties entirely: itemSpacing and the axis alignments do not apply here.
+function applyGrid(n: FrameNode, rule: Rule) {
+  const g = n as unknown as {
+    gridColumnSizes?: { type: string; value?: number }[];
+    gridRowSizes?: { type: string; value?: number }[];
+    gridColumnCount?: number;
+    gridRowCount?: number;
+    gridColumnGap?: number;
+    gridRowGap?: number;
+    gridAutoTracks?: string;
+    gridItemsPositioning?: string;
+  };
+  rule.display = "grid";
+
+  const cols = g.gridColumnSizes?.length
+    ? g.gridColumnSizes.map(trackCss).join(" ")
+    : g.gridColumnCount
+      ? `repeat(${g.gridColumnCount}, 1fr)`
+      : null;
+  if (cols) rule["grid-template-columns"] = cols;
+
+  // Rows are only pinned when Figma actually defines them. gridAutoTracks 'ROWS'
+  // means new rows are created implicitly, which is grid-auto-rows in CSS.
+  const rows = g.gridRowSizes?.length ? g.gridRowSizes.map(trackCss).join(" ") : null;
+  if (rows) rule["grid-template-rows"] = rows;
+  if (g.gridAutoTracks === "ROWS") rule["grid-auto-rows"] = "auto";
+  if (g.gridItemsPositioning === "ROW_AUTO_FLOW") rule["grid-auto-flow"] = "row";
+
+  if (g.gridColumnGap) rule["column-gap"] = `${Math.round(g.gridColumnGap)}px`;
+  if (g.gridRowGap) rule["row-gap"] = `${Math.round(g.gridRowGap)}px`;
+}
+
 export function applyLayout(node: SceneNode, rule: Rule) {
   if (!("layoutMode" in node) || node.layoutMode === "NONE") return;
   const n = node as FrameNode;
-  rule.display = "flex";
-  rule["flex-direction"] = n.layoutMode === "VERTICAL" ? "column" : "row";
 
   const pad = [n.paddingTop, n.paddingRight, n.paddingBottom, n.paddingLeft];
   if (pad.some((p) => p > 0))
     rule.padding = pad.map((p) => `${Math.round(p)}px`).join(" ");
 
-  const primary: { [k: string]: string } = {
-    MIN: "flex-start",
-    CENTER: "center",
-    MAX: "flex-end",
-    SPACE_BETWEEN: "space-between",
-  };
-  const counter: { [k: string]: string } = {
-    MIN: "flex-start",
-    CENTER: "center",
-    MAX: "flex-end",
-    BASELINE: "baseline",
-  };
-  rule["justify-content"] = primary[n.primaryAxisAlignItems] || "flex-start";
-  rule["align-items"] = counter[n.counterAxisAlignItems] || "flex-start";
+  if ((n.layoutMode as string) === "GRID") {
+    applyGrid(n, rule);
+    return;
+  }
 
-  if (n.primaryAxisAlignItems !== "SPACE_BETWEEN" && n.itemSpacing > 0)
-    rule.gap = `${Math.round(n.itemSpacing)}px`;
+  rule.display = "flex";
+  rule["flex-direction"] = n.layoutMode === "VERTICAL" ? "column" : "row";
+  rule["justify-content"] = PRIMARY[n.primaryAxisAlignItems] || "flex-start";
+  rule["align-items"] = COUNTER[n.counterAxisAlignItems] || "flex-start";
+
+  const wrapping = "layoutWrap" in n && n.layoutWrap === "WRAP";
+  if (wrapping) {
+    rule["flex-wrap"] = "wrap";
+    // Lines and items align independently. Leaving align-content at its
+    // `stretch` default silently stretches every line, which is the usual way a
+    // wrapped layout comes out wrong.
+    const content = n.counterAxisAlignContent;
+    rule["align-content"] =
+      content === "SPACE_BETWEEN"
+        ? "space-between"
+        : COUNTER[n.counterAxisAlignItems] || "flex-start";
+  }
+
+  // SPACE_BETWEEN distributes the free space itself; Figma shows the gap as
+  // "Auto" and ignores the stored value, so nothing is emitted here.
+  if (n.primaryAxisAlignItems === "SPACE_BETWEEN") return;
+
+  const gap = Math.round(n.itemSpacing);
+  // The cross-axis gap between wrapped lines is a separate Figma property and is
+  // always positive, so it maps straight to row-gap.
+  const cross = wrapping ? (n.counterAxisSpacing ?? n.itemSpacing) : null;
+
+  if (gap >= 0) {
+    if (wrapping) {
+      if (gap > 0) rule["column-gap"] = `${gap}px`;
+      if (cross) rule["row-gap"] = `${Math.round(cross)}px`;
+    } else if (gap > 0) rule.gap = `${gap}px`;
+    return;
+  }
+
+  // Negative gap: the children overlap. CSS `gap` cannot go negative, so the
+  // spacing moves to sibling margins, which shrink the container's content size
+  // the same way Figma's negative spacing does. The caller emits the margin (and
+  // the stacking order, which negative spacing makes visible) per child.
+  rule[NEGATIVE_GAP] = `${gap}px`;
+  if (cross) rule["row-gap"] = `${Math.round(cross)}px`;
+}
+
+// Carried on the parent's rule for the emitter to turn into child margins. It is
+// not a CSS property and never reaches the stylesheet.
+export const NEGATIVE_GAP = "--negative-gap";
+
+// The margin one child needs so its parent's negative gap overlaps it onto the
+// previous sibling. Index 0 gets nothing, since there is nothing to overlap.
+export function overlapMargin(parent: SceneNode, index: number): Rule {
+  if (index === 0 || !("layoutMode" in parent)) return {};
+  const n = parent as FrameNode;
+  const gap = Math.round(n.itemSpacing ?? 0);
+  if (gap >= 0 || n.primaryAxisAlignItems === "SPACE_BETWEEN") return {};
+  return n.layoutMode === "VERTICAL" ? { "margin-top": `${gap}px` } : { "margin-left": `${gap}px` };
+}
+
+// Overlapping children need an explicit paint order. Figma's default is that the
+// last child wins; "Canvas stacking: First on top" (itemReverseZIndex) flips it.
+export function overlapZIndex(parent: SceneNode, index: number, total: number): Rule {
+  if (!("layoutMode" in parent)) return {};
+  const n = parent as FrameNode;
+  if (Math.round(n.itemSpacing ?? 0) >= 0) return {};
+  const reverse = "itemReverseZIndex" in n && n.itemReverseZIndex;
+  return { position: "relative", "z-index": String(reverse ? total - index : index + 1) };
 }
