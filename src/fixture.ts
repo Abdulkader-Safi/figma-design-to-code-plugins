@@ -8,6 +8,7 @@
 // and embedding PNGs would make it unusable (a real page runs to megabytes).
 
 import { isVectorLike, isIconContainer } from "./nodes";
+import { SEGMENT_FIELDS } from "./text";
 
 // figma.mixed is a symbol, so it cannot survive JSON. It travels as this marker
 // and the replay side turns it back into the symbol.
@@ -111,18 +112,6 @@ const PROPS = [
   "hyperlink",
 ] as const;
 
-// The fields getStyledTextSegments is asked for. Kept in one place so the dump
-// and the exporter cannot drift apart.
-export const SEGMENT_FIELDS = [
-  "fontName",
-  "fontSize",
-  "fills",
-  "textDecoration",
-  "textCase",
-  "letterSpacing",
-  "lineHeight",
-] as const;
-
 type Json = unknown;
 
 // Replaces the mixed symbol and drops anything JSON cannot carry. Figma's
@@ -151,7 +140,7 @@ export interface FixtureNode {
   children?: FixtureNode[];
 }
 
-export function dumpNode(node: SceneNode): FixtureNode {
+function dumpNode(node: SceneNode): FixtureNode {
   const out: FixtureNode = {};
   for (const key of PROPS) {
     if (!(key in node)) continue;
@@ -176,7 +165,7 @@ export function dumpNode(node: SceneNode): FixtureNode {
   if (node.type === "TEXT") {
     try {
       out.segments = plain(
-        node.getStyledTextSegments(SEGMENT_FIELDS as unknown as never),
+        node.getStyledTextSegments([...SEGMENT_FIELDS]),
       );
     } catch {
       out.segments = [];

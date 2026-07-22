@@ -13,13 +13,7 @@ import {
   hugsText,
 } from "./nodes";
 import { headingMap, textTag, containerTag } from "./semantic";
-import {
-  positionAndSize,
-  applyLayout,
-  overlapMargin,
-  overlapZIndex,
-  NEGATIVE_GAP,
-} from "./layout";
+import { positionAndSize, applyLayout, overlapMargin, overlapZIndex } from "./layout";
 import { applyBoxDecoration } from "./decoration";
 import {
   fillStack,
@@ -28,7 +22,7 @@ import {
   type ImageStore,
   type Asset,
 } from "./paint";
-import { styleRule, ALIGN } from "./text";
+import { styleRule, ALIGN, SEGMENT_FIELDS } from "./text";
 import { toTailwind, fontSlug } from "./tailwind";
 import { fontLink, docShell } from "./document";
 import { buildMergedTree } from "./merge-build";
@@ -212,15 +206,7 @@ export async function generate(
       // Node-level alignment always; font/size/color per segment below.
       rule["text-align"] = ALIGN[node.textAlignHorizontal] || "left";
 
-      const segments = node.getStyledTextSegments([
-        "fontName",
-        "fontSize",
-        "fills",
-        "textDecoration",
-        "textCase",
-        "letterSpacing",
-        "lineHeight",
-      ]);
+      const segments = node.getStyledTextSegments([...SEGMENT_FIELDS]);
 
       let inner: string;
       if (segments.length <= 1) {
@@ -325,9 +311,6 @@ export async function generate(
         ? containerTag(node, topBand)
         : "div";
     const kids = "children" in node ? node.children.slice() : [];
-    // Not a CSS property: it tells this node's children what margin to carry.
-    const negativeGap = rule[NEGATIVE_GAP] !== undefined;
-    delete rule[NEGATIVE_GAP];
     if (kids.length === 0) {
       const open = `${indent}<${tag} class="${withBleed(emitClass(cls, rule, hasBefore))}">`;
       if (layerHtml.length === 0) return `${open}</${tag}>`;
@@ -346,9 +329,8 @@ export async function generate(
     const childInteractive = interactive || tag === "a" || tag === "button";
     const childHtml: string[] = [...layerHtml];
     for (let i = 0; i < kids.length; i++) {
-      const extra = negativeGap
-        ? { ...overlapMargin(node, i), ...overlapZIndex(node, i, kids.length) }
-        : {};
+      // Both are empty unless this parent's gap is negative.
+      const extra = { ...overlapMargin(node, i), ...overlapZIndex(node, i, kids.length) };
       const h = await build(kids[i], node, depth + 1, tag, childInteractive, extra, childBackdrop);
       if (h) childHtml.push(h);
     }
@@ -568,15 +550,7 @@ export async function nodeRule(
       href = link && typeof link === "object" ? escapeHtml(link.value) : "#";
     }
 
-    const segments = node.getStyledTextSegments([
-      "fontName",
-      "fontSize",
-      "fills",
-      "textDecoration",
-      "textCase",
-      "letterSpacing",
-      "lineHeight",
-    ]);
+    const segments = node.getStyledTextSegments([...SEGMENT_FIELDS]);
     let text: string;
     if (segments.length <= 1) {
       styleRule(node, rule, ctx.addFont); // uniform text: style the whole node
@@ -616,7 +590,6 @@ export async function nodeRule(
         )
       : { rule: {}, layers: [] };
   Object.assign(rule, fill.rule);
-  delete rule[NEGATIVE_GAP];
   if (parent === null) delete rule.overflow;
 
   let bleedBg: string | undefined;

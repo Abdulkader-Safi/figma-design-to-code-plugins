@@ -36,7 +36,7 @@ const BLEND: { [k: string]: string } = {
   LUMINOSITY: "luminosity",
 };
 
-export const blendCss = (mode: string | undefined): string =>
+const blendCss = (mode: string | undefined): string =>
   BLEND[mode ?? "NORMAL"] ?? "normal";
 
 const visiblePaints = (fills: readonly Paint[] | typeof figma.mixed): Paint[] =>
