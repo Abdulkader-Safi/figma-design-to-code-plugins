@@ -70,7 +70,16 @@
     Export selected frame
 </button>
 
-<div id="status" class="status"></div>
+<div class="mt-2 flex items-baseline justify-between gap-3">
+    <div id="status" class="status"></div>
+    <button
+        id="fixture"
+        class="shrink-0 cursor-pointer border-0 bg-transparent p-0 font-mono text-[10px] uppercase tracking-[0.18em] text-muted transition-colors duration-150 hover:text-text"
+        title="Save the selected frame's node tree as JSON, for reproducing a layout bug outside Figma"
+    >
+        Dump fixture
+    </button>
+</div>
 
 <div class="hidden gap-1.5 mb-2" id="tabs">
     <button class="tab active" data-mode="combined">HTML + CSS</button>
@@ -269,6 +278,11 @@
         );
     };
 
+    $("fixture").onclick = () => {
+        setStatus("Dumping node tree…");
+        parent.postMessage({ pluginMessage: { type: "fixture" } }, "*");
+    };
+
     $("copy").onclick = () => {
         const ta = document.createElement("textarea");
         ta.value = raw();
@@ -301,6 +315,16 @@
         if (msg.type === "error") {
             setStatus(msg.message, true);
             show(false);
+        } else if (msg.type === "fixture") {
+            // Straight to disk: a fixture is for sending on, not for reading here.
+            const blob = new Blob([msg.json], { type: "application/json" });
+            const a = document.createElement("a");
+            a.href = URL.createObjectURL(blob);
+            a.download = msg.name + ".fixture.json";
+            a.click();
+            URL.revokeObjectURL(a.href);
+            const kb = Math.round(msg.json.length / 1024);
+            setStatus(msg.summary + ". " + kb + " KB saved.");
         } else if (msg.type === "result") {
             state.name = msg.name || "export";
             state.combined = msg.combined;
