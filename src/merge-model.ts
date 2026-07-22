@@ -26,36 +26,113 @@ export interface MergedNode {
   href?: string;
 }
 
-// Properties of `other` whose serialised value differs from `base` (added or
-// changed). Values are already strings/numbers; compare by String().
-export function diffRules(base: Rule, other: Rule): Rule {
+// What a breakpoint must declare to reach `target`, given `effective` (what the
+// smaller breakpoints already put in force) and `base` (the unprefixed rule).
+//
+// The second loop is the part that is easy to miss. A mobile-first cascade only
+// ever adds, so a property one breakpoint sets and the next one does not stays
+// in force: a section pinned to width 1360px for the laptop frame kept that
+// width in the desktop layout, where it should stretch. Anything dropped is put
+// back to its base value, or to `initial` when base never set it.
+export function cascadeDiff(effective: Rule, target: Rule, base: Rule): Rule {
   const out: Rule = {};
-  for (const k of Object.keys(other)) {
-    if (!(k in base) || String(base[k]) !== String(other[k])) out[k] = other[k];
+  for (const k of Object.keys(target)) {
+    if (!(k in effective) || String(effective[k]) !== String(target[k])) out[k] = target[k];
+  }
+  for (const k of Object.keys(effective)) {
+    if (k in target) continue;
+    const want = k in base ? base[k] : "initial";
+    if (String(effective[k]) !== String(want)) out[k] = want;
   }
   return out;
 }
 
-// For each base child, its counterpart in otherKids. A uniquely-named base child
-// is identified by that name: matched only to the same unique name, else null
-// (a renamed or absent node is its own element, never position-guessed). An
-// unnamed or duplicate-named child falls back to child index.
+// Whether two nodes can stand for the same element at all. Sharing a name is not
+// enough on its own: a mobile frame's hero image and a laptop frame's text panel
+// were both called "Sub Container", and pairing them exported the panel as a
+// stretched image. Same Figma type, and a leaf only ever pairs with a leaf.
+export function compatible(a: SceneNode, b: SceneNode): boolean {
+  if (a.type !== b.type) return false;
+  const kids = (n: SceneNode) => ("children" in n ? n.children.length : 0);
+  return (kids(a) === 0) === (kids(b) === 0);
+}
+
+// For each base child, its counterpart in otherKids. Identity is the name, with
+// position breaking ties inside a name: the nth "Card" takes the next unclaimed
+// compatible "Card". A name the other frame does not use pairs with nothing, so
+// a node the designer rebuilt rather than restyled stays its own element instead
+// of inheriting a stranger's position.
+//
+// Matching on the raw index instead bound a mobile icon button to whatever
+// desktop node shared its slot and then forced their unrelated subtrees
+// together. Bucketing also means four cards against three leave the fourth
+// unmatched rather than shifting every pair by one.
 export function matchChildren(
   baseKids: SceneNode[],
   otherKids: SceneNode[],
 ): (SceneNode | null)[] {
-  const count = (list: SceneNode[], name: string) =>
-    list.filter((k) => (k.name || "") === name).length;
-  return baseKids.map((child, i) => {
-    const name = child.name || "";
-    if (name && count(baseKids, name) === 1) {
-      // Identity is the name: pair only with the same unique name, else nothing.
-      return count(otherKids, name) === 1
-        ? otherKids.find((k) => (k.name || "") === name) || null
-        : null;
-    }
-    return otherKids[i] || null;
+  const byName = new Map<string, SceneNode[]>();
+  for (const k of otherKids) {
+    const name = k.name || "";
+    const bucket = byName.get(name);
+    if (bucket) bucket.push(k);
+    else byName.set(name, [k]);
+  }
+  // ponytail: linear scan per child. Sibling counts are small; if a frame ever
+  // holds thousands of same-named children this wants an index per bucket.
+  const claimed = new Set<SceneNode>();
+  return baseKids.map((child) => {
+    const bucket = byName.get(child.name || "");
+    const hit = bucket?.find((k) => !claimed.has(k) && compatible(child, k));
+    if (hit) claimed.add(hit);
+    return hit ?? null;
   });
+}
+
+// Children that exist in a larger frame but have no counterpart in the primary
+// one, ready to be inserted into the merged child list.
+//
+// Two things matter here. Same-named siblings must stay distinct: Figma designs
+// are full of repeated nodes all called "Card", and keying a group on the name
+// alone collapses four service cards into one and silently drops three. So the
+// key carries an occurrence counter within its own token. Across tokens the name
+// still groups, so an element added by both the tablet and the desktop frame
+// stays a single node present at both.
+//
+// `index` is where the node sat among its own frame's children, so the caller
+// can splice it near its real position instead of pushing every addition to the
+// end (which puts a section heading below the cards it introduces).
+export function appendedGroups(
+  perToken: { token: Token; kids: SceneNode[]; used: Set<SceneNode> }[],
+): { index: number; nodes: { token: Token; node: SceneNode }[] }[] {
+  type Group = { index: number; nodes: { token: Token; node: SceneNode }[] };
+  const byName = new Map<string, Group[]>();
+  const all: Group[] = [];
+  for (const { token, kids, used } of perToken) {
+    kids.forEach((k, i) => {
+      if (used.has(k)) return;
+      const name = k.name || "";
+      const list = byName.get(name);
+      // Join the first group of this name that is compatible and does not yet
+      // hold this token. Skipping groups that already hold it is what keeps four
+      // sibling "Card"s four groups; the compatibility check is what stops an
+      // image joining a text panel when two frames order their additions apart.
+      let group = name
+        ? list?.find(
+            (g) => !g.nodes.some((x) => x.token === token) && compatible(g.nodes[0].node, k),
+          )
+        : undefined;
+      if (!group) {
+        group = { index: i, nodes: [] };
+        all.push(group);
+        if (list) list.push(group);
+        else byName.set(name, [group]);
+      }
+      group.nodes.push({ token, node: k });
+      group.index = Math.min(group.index, i);
+    });
+  }
+  return all.sort((a, b) => a.index - b.index);
 }
 
 // The display value to SET at each token where this node's visibility flips,

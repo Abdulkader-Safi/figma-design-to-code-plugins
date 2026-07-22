@@ -13,7 +13,7 @@
 import type { Rule } from "./types";
 import type { Token } from "./breakpoints";
 import type { FrameVariant } from "./responsive";
-import { type MergedNode, matchChildren } from "./merge-model";
+import { type MergedNode, appendedGroups, matchChildren } from "./merge-model";
 import { nodeRule, type NodeStyle } from "./generate";
 import { headingMap } from "./semantic";
 
@@ -150,25 +150,24 @@ export async function buildMergedTree(
       if (c) children.push(c);
     }
 
-    // Children that exist in a larger frame but not the primary: appended once,
-    // grouped by name across frames so an added element shared by two larger
-    // frames stays a single node present at both tokens.
-    const appended = new Map<string, Map<Token, Entry>>();
-    let anon = 0;
-    for (const t of presentTokens) {
-      if (t === primaryToken) continue;
-      const used = usedByToken.get(t)!;
-      for (const k of visibleChildren(entries.get(t)!.node)) {
-        if (used.has(k)) continue;
-        const name = k.name || "";
-        const key = name ? `n:${name}` : `a:${anon++}`;
-        if (!appended.has(key)) appended.set(key, new Map());
-        appended.get(key)!.set(t, { node: k, parent: entries.get(t)!.node });
+    // Children that exist in a larger frame but not the primary, spliced in at
+    // the position they hold in their own frame.
+    const groups = appendedGroups(
+      presentTokens
+        .filter((t) => t !== primaryToken)
+        .map((t) => ({
+          token: t,
+          kids: visibleChildren(entries.get(t)!.node),
+          used: usedByToken.get(t)!,
+        })),
+    );
+    for (const group of groups) {
+      const childEntries = new Map<Token, Entry>();
+      for (const { token, node } of group.nodes) {
+        childEntries.set(token, { node, parent: entries.get(token)!.node });
       }
-    }
-    for (const group of appended.values()) {
-      const c = await buildNode(group, false, childTopBand, tag, childInteractive);
-      if (c) children.push(c);
+      const c = await buildNode(childEntries, false, childTopBand, tag, childInteractive);
+      if (c) children.splice(Math.min(group.index, children.length), 0, c);
     }
 
     merged.children = children;

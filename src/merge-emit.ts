@@ -7,7 +7,7 @@
 import type { Rule } from "./types";
 import type { Token } from "./breakpoints";
 import { STANDARD } from "./breakpoints";
-import { type MergedNode, diffRules, displayTransitions } from "./merge-model";
+import { type MergedNode, cascadeDiff, displayTransitions } from "./merge-model";
 import { toTailwind, fontSlug } from "./tailwind";
 import { fontLink, docShell } from "./document";
 
@@ -36,12 +36,30 @@ function bgUtil(bg: string): string {
 }
 
 // The root's pinned width becomes fluid and its fixed height is dropped so the
-// page grows with content instead of clamping to the base frame's size.
-function fluidRoot(rule: Rule): Rule {
+// page grows with content instead of clamping to the base frame's size. `cap`,
+// the widest frame in the set, is applied to the base rule only: it needs no
+// per-breakpoint override, and it is what stops the largest layout from
+// stretching edge to edge on a monitor wider than the design.
+function fluidRoot(rule: Rule, cap: string | null): Rule {
   const out: Rule = { ...rule };
   if ("width" in out) out.width = "100%";
+  if (cap) {
+    out["max-width"] = cap;
+    out.margin = "0 auto";
+  }
   delete out.height;
   return out;
+}
+
+// The widest px width the root takes across the set, as a CSS length.
+function widestRoot(root: MergedNode): string | null {
+  let max = 0;
+  for (const t of ORDER) {
+    const w = root.rulesByToken[t]?.width;
+    const px = typeof w === "string" && w.endsWith("px") ? parseFloat(w) : NaN;
+    if (!Number.isNaN(px)) max = Math.max(max, px);
+  }
+  return max > 0 ? `${max}px` : null;
 }
 
 function serializeRule(rule: Rule): string {
@@ -118,6 +136,7 @@ export function emitMerged(
   };
   collect(root);
   const tokens = ORDER.filter((t) => used.has(t));
+  const rootCap = widestRoot(root);
 
   // CSS accumulators (unused in Tailwind mode).
   const baseCss: string[] = [];
@@ -126,50 +145,59 @@ export function emitMerged(
   // Returns the class attribute for a unit, registering CSS as a side effect in
   // CSS mode. In Tailwind mode it returns base utilities plus prefixed diffs.
   function classAttr(unit: Unit, isRoot: boolean): string {
-    const baseRule = isRoot ? fluidRoot(unit.rulesByToken.base ?? {}) : unit.rulesByToken.base ?? {};
+    const baseRule = isRoot
+      ? fluidRoot(unit.rulesByToken.base ?? {}, rootCap)
+      : unit.rulesByToken.base ?? {};
+    // Every root token carries the same cap, so the cascade sees no change and
+    // emits it once on the base rule.
     const ruleAt = (t: Token): Rule => {
       const r = unit.rulesByToken[t];
-      if (!r) return baseRule; // absent -> no style diff; presence handled below
-      return isRoot ? fluidRoot(r) : r;
+      if (!r) return baseRule;
+      return isRoot ? fluidRoot(r, rootCap) : r;
     };
     const firstPresent = tokens.find((t) => unit.presentAt.includes(t)) ?? "base";
     const shown = String(unit.rulesByToken[firstPresent]?.display ?? baseRule.display ?? "block");
     const displayMap = displayTransitions(unit.presentAt, tokens, shown);
 
+    // Walk the breakpoints in order, carrying what is already in force, so a
+    // property one token sets and the next drops is reset instead of leaking.
+    const steps: { token: Token; diff: Rule }[] = [];
+    let effective: Rule = { ...baseRule };
+    for (const t of tokens) {
+      if (t === "base") continue;
+      const diff: Rule = unit.presentAt.includes(t) ? cascadeDiff(effective, ruleAt(t), baseRule) : {};
+      if (unit.presentAt.includes(t)) effective = { ...ruleAt(t) };
+      if (displayMap[t]) diff.display = displayMap[t];
+      steps.push({ token: t, diff });
+    }
+
+    const base: Rule = { ...baseRule };
+    if (displayMap.base) base.display = displayMap.base;
+
     if (!opts.tailwind) {
-      const base: Rule = { ...baseRule };
-      if (displayMap.base) base.display = displayMap.base;
       const bb = cssBlock(unit.className, base);
       if (bb) baseCss.push(bb);
       if (unit.bleedBg) baseCss.push(bleedCss(unit.className, unit.bleedBg));
-      for (const t of tokens) {
-        if (t === "base") continue;
-        const diff = diffRules(baseRule, ruleAt(t));
-        if (displayMap[t]) diff.display = displayMap[t];
+      for (const { token, diff } of steps) {
         const blk = cssBlock(unit.className, diff);
         if (blk) {
-          if (!tokenCss.has(t)) tokenCss.set(t, []);
-          tokenCss.get(t)!.push(blk);
+          if (!tokenCss.has(token)) tokenCss.set(token, []);
+          tokenCss.get(token)!.push(blk);
         }
       }
       return unit.className;
     }
 
-    const base: Rule = { ...baseRule };
-    if (displayMap.base) base.display = displayMap.base;
     let out = toTailwind(base);
     if (unit.bleedBg) out += (out ? " " : "") + bleedUtils(unit.bleedBg);
-    for (const t of tokens) {
-      if (t === "base") continue;
-      const diff = diffRules(baseRule, ruleAt(t));
-      if (displayMap[t]) diff.display = displayMap[t];
+    for (const { token, diff } of steps) {
       const utils = toTailwind(diff);
       if (utils)
         out +=
           (out ? " " : "") +
           utils
             .split(/\s+/)
-            .map((u) => `${t}:${u}`)
+            .map((u) => `${token}:${u}`)
             .join(" ");
     }
     return out.trim();
