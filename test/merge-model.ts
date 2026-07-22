@@ -89,6 +89,41 @@ assert(hero[0] === heroLg[1], "the image pairs with the image, not the panel");
 // Different Figma types never pair, whatever they are called.
 assert(matchChildren([n("Box")], [other("Box")])[0] === null, "type mismatch does not pair");
 
+// Two containers sharing a name but no copy are different things. The
+// testimonials heading and the list of testimonial cards were both "Container",
+// so the cards took the heading's slot and the heading was appended below them.
+const withText = (name: string, ...lines: string[]) =>
+  ({
+    name,
+    type: "FRAME",
+    children: lines.map((c) => ({ name: "T", type: "TEXT", characters: c })),
+  }) as never as SceneNode;
+const heading = withText("Container", "What our Clients say About us");
+const cardList = withText("Container", "SquareUp has been Instrumental in Transforming");
+assert(
+  matchChildren([cardList], [heading, cardList])[0] === cardList,
+  "the cards pair with the cards, not the heading above them",
+);
+assert(
+  matchChildren([heading], [heading, cardList])[0] === heading,
+  "the heading pairs with the heading",
+);
+
+// One carries copy, the other carries none: a hamburger button and a
+// "Contact Us" button, both called "Button".
+const hamburger = { name: "Button", type: "FRAME", children: [n("Icon")] } as never as SceneNode;
+const contact = withText("Button", "Contact Us");
+assert(matchChildren([hamburger], [contact])[0] === null, "a text-less button does not pair with a labelled one");
+
+// Content only separates containers. A text node whose copy changes between
+// frames stays one node with two strings, which the emitter toggles.
+const ctaShort = { name: "CTA", type: "TEXT", characters: "Sign up" } as never as SceneNode;
+const ctaLong = { name: "CTA", type: "TEXT", characters: "Sign up for free" } as never as SceneNode;
+assert(
+  matchChildren([ctaShort], [ctaLong])[0] === ctaLong,
+  "a text leaf still pairs across a copy change",
+);
+
 // appendedGroups applies the same guard when two frames order additions apart.
 const gA = branch("Sub Container"), gB = other("Sub Container");
 const guarded = appendedGroups([
