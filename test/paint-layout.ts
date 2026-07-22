@@ -3,80 +3,22 @@
 //
 // Every shape here is lifted from a real dumped fixture, so these are the exact
 // cases that were exporting wrong, not invented ones.
-import { hydrateFrames } from "./replay";
+import {
+  assert,
+  BOX,
+  hydrateFrames,
+  imagePaint as image,
+  solidPaint as solid,
+  text,
+  type Fake,
+} from "./fakes";
 
 const { generate } = await import("../src/generate");
 
-function assert(cond: boolean, msg: string) {
-  if (!cond) throw new Error("FAIL: " + msg);
-}
 
-type Fake = Record<string, unknown>;
 
-const BOX: Fake = {
-  type: "FRAME",
-  visible: true,
-  x: 0,
-  y: 0,
-  width: 200,
-  height: 100,
-  rotation: 0,
-  opacity: 1,
-  layoutMode: "NONE",
-  layoutPositioning: "AUTO",
-  layoutSizingHorizontal: "FIXED",
-  layoutSizingVertical: "FIXED",
-  primaryAxisAlignItems: "MIN",
-  counterAxisAlignItems: "MIN",
-  itemSpacing: 0,
-  paddingTop: 0,
-  paddingRight: 0,
-  paddingBottom: 0,
-  paddingLeft: 0,
-  fills: [],
-  strokes: [],
-  effects: [],
-  cornerRadius: 0,
-  clipsContent: false,
-  children: [],
-};
 
-const text = (name: string, characters: string): Fake => {
-  const t: Fake = {
-    ...BOX,
-    name,
-    type: "TEXT",
-    characters,
-    textAutoResize: "NONE",
-    textAlignHorizontal: "LEFT",
-    fontName: { family: "Inter", style: "Regular" },
-    fontSize: 16,
-    textCase: "ORIGINAL",
-    textDecoration: "NONE",
-    letterSpacing: { unit: "PIXELS", value: 0 },
-    lineHeight: { unit: "AUTO" },
-    hyperlink: null,
-  };
-  delete t.children;
-  return t;
-};
 
-const solid = (r: number, g: number, b: number, o = 1, blend?: string) => ({
-  type: "SOLID",
-  visible: true,
-  color: { r, g, b },
-  opacity: o,
-  ...(blend ? { blendMode: blend } : {}),
-});
-const image = (o = 1, blend?: string, extra: Record<string, unknown> = {}) => ({
-  type: "IMAGE",
-  visible: true,
-  scaleMode: "FILL",
-  imageHash: "abc",
-  opacity: o,
-  ...(blend ? { blendMode: blend } : {}),
-  ...extra,
-});
 
 const html = async (frame: Fake) => {
   const [live] = hydrateFrames([frame as never]);

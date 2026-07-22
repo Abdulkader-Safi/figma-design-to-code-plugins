@@ -19,7 +19,8 @@ const svgStub = (w: number, h: number) =>
   `<svg xmlns="http://www.w3.org/2000/svg" width="${Math.max(1, Math.round(w))}" ` +
   `height="${Math.max(1, Math.round(h))}" viewBox="0 0 ${Math.max(1, Math.round(w))} ${Math.max(1, Math.round(h))}"></svg>`;
 
-export function installFigmaStub(): void {
+// Installed on import: every suite reaches this through test/fakes.ts.
+function installFigmaStub(): void {
   (globalThis as unknown as { figma: unknown }).figma = {
     mixed: MIXED,
     base64Encode: () => "STUB",
