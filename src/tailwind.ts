@@ -267,6 +267,8 @@ function twUtil(k: string, v: string): string {
             : `h-[${a}]`;
     case "white-space":
       return v === "nowrap" ? "whitespace-nowrap" : `[white-space:${a}]`;
+    case "max-width":
+      return v === "100%" ? "max-w-full" : `max-w-[${a}]`;
     case "min-width":
       return parseFloat(v) === 0 ? "min-w-0" : `min-w-[${a}]`;
     case "min-height":

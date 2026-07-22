@@ -26,35 +26,54 @@ export interface MergedNode {
   href?: string;
 }
 
-// Properties of `other` whose serialised value differs from `base` (added or
-// changed). Values are already strings/numbers; compare by String().
-export function diffRules(base: Rule, other: Rule): Rule {
+// What a breakpoint must declare to reach `target`, given `effective` (what the
+// smaller breakpoints already put in force) and `base` (the unprefixed rule).
+//
+// The second loop is the part that is easy to miss. A mobile-first cascade only
+// ever adds, so a property one breakpoint sets and the next one does not stays
+// in force: a section pinned to width 1360px for the laptop frame kept that
+// width in the desktop layout, where it should stretch. Anything dropped is put
+// back to its base value, or to `initial` when base never set it.
+export function cascadeDiff(effective: Rule, target: Rule, base: Rule): Rule {
   const out: Rule = {};
-  for (const k of Object.keys(other)) {
-    if (!(k in base) || String(base[k]) !== String(other[k])) out[k] = other[k];
+  for (const k of Object.keys(target)) {
+    if (!(k in effective) || String(effective[k]) !== String(target[k])) out[k] = target[k];
+  }
+  for (const k of Object.keys(effective)) {
+    if (k in target) continue;
+    const want = k in base ? base[k] : "initial";
+    if (String(effective[k]) !== String(want)) out[k] = want;
   }
   return out;
 }
 
-// For each base child, its counterpart in otherKids. A uniquely-named base child
-// is identified by that name: matched only to the same unique name, else null
-// (a renamed or absent node is its own element, never position-guessed). An
-// unnamed or duplicate-named child falls back to child index.
+// For each base child, its counterpart in otherKids. Identity is the name, and
+// position only breaks ties within a name: the nth child called "Card" pairs
+// with the nth child called "Card". A name the other frame does not use at all
+// pairs with nothing, so a node the designer replaced rather than restyled stays
+// its own element instead of inheriting a stranger's position.
+//
+// Bucketing by name matters when the two frames hold different counts. Raw index
+// matching paired a mobile icon button with a desktop row that happened to sit
+// at the same position, then forced their unrelated children together; pairing
+// four cards with three now leaves the fourth unmatched and lines the rest up.
 export function matchChildren(
   baseKids: SceneNode[],
   otherKids: SceneNode[],
 ): (SceneNode | null)[] {
-  const count = (list: SceneNode[], name: string) =>
-    list.filter((k) => (k.name || "") === name).length;
-  return baseKids.map((child, i) => {
+  const byName = new Map<string, SceneNode[]>();
+  for (const k of otherKids) {
+    const name = k.name || "";
+    const bucket = byName.get(name);
+    if (bucket) bucket.push(k);
+    else byName.set(name, [k]);
+  }
+  const taken = new Map<string, number>();
+  return baseKids.map((child) => {
     const name = child.name || "";
-    if (name && count(baseKids, name) === 1) {
-      // Identity is the name: pair only with the same unique name, else nothing.
-      return count(otherKids, name) === 1
-        ? otherKids.find((k) => (k.name || "") === name) || null
-        : null;
-    }
-    return otherKids[i] || null;
+    const nth = taken.get(name) ?? 0;
+    taken.set(name, nth + 1);
+    return byName.get(name)?.[nth] ?? null;
   });
 }
 

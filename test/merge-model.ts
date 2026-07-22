@@ -1,19 +1,36 @@
 // Headless self-check for the pure merge algorithms. Run: bun run test/merge-model.ts
-import { appendedGroups, diffRules, matchChildren, displayTransitions } from "../src/merge-model";
+import { appendedGroups, cascadeDiff, matchChildren, displayTransitions } from "../src/merge-model";
 import type { Token } from "../src/breakpoints";
 
 function assert(cond: boolean, msg: string) {
   if (!cond) throw new Error("FAIL: " + msg);
 }
 
-// diffRules keeps only changed/added props.
-const d = diffRules({ "font-size": "32px", color: "#fff" }, { "font-size": "58px", color: "#fff" });
+// cascadeDiff keeps only changed/added props.
+const b0 = { "font-size": "32px", color: "#fff" };
+const d = cascadeDiff(b0, { "font-size": "58px", color: "#fff" }, b0);
 assert(
   JSON.stringify(d) === JSON.stringify({ "font-size": "58px" }),
   `only font-size changed: ${JSON.stringify(d)}`,
 );
-assert(Object.keys(diffRules({ a: "1" }, { a: "1" })).length === 0, "identical rules diff to empty");
-assert(diffRules({}, { gap: "10px" }).gap === "10px", "a new prop is a diff");
+assert(Object.keys(cascadeDiff({ a: "1" }, { a: "1" }, { a: "1" })).length === 0, "identical rules diff to empty");
+assert(cascadeDiff({}, { gap: "10px" }, {}).gap === "10px", "a new prop is a diff");
+
+// A property in force from a smaller breakpoint but absent here must be reset,
+// or it leaks: a section pinned to the laptop width kept it on the desktop.
+const leak = cascadeDiff({ "align-self": "stretch", width: "1360px" }, { "align-self": "stretch" }, { "align-self": "stretch" });
+assert(leak.width === "initial", `dropped width resets to initial: ${JSON.stringify(leak)}`);
+assert(leak["align-self"] === undefined, "unchanged prop is not restated");
+
+// When base did set the property, the reset goes back to the base value.
+const back = cascadeDiff({ padding: "40px" }, { gap: "8px" }, { padding: "10px" });
+assert(back.padding === "10px" && back.gap === "8px", `reset to base value: ${JSON.stringify(back)}`);
+
+// Already sitting at the base value means nothing to emit.
+assert(
+  Object.keys(cascadeDiff({ padding: "10px" }, {}, { padding: "10px" })).length === 0,
+  "no reset when already at the base value",
+);
 
 // matchChildren: by name first.
 const n = (name: string) => ({ name, children: [] }) as never as SceneNode;
@@ -33,11 +50,34 @@ assert(byIndex[0] === b1 && byIndex[1] === b2, "unnamed matched by position");
 const none = matchChildren([n("Extra")], [n("Other")]);
 assert(none[0] === null, "no counterpart is null");
 
-// Duplicate sibling names fall back to index (not a unique name match).
+// Duplicate sibling names pair nth with nth.
 const dupA = [n("Item"), n("Item")];
 const dupB = [n("Item"), n("Item")];
 const dup = matchChildren(dupA, dupB);
 assert(dup[0] === dupB[0] && dup[1] === dupB[1], "duplicate names use position");
+
+// Unequal counts: the extras go unmatched, the rest still line up.
+const four = [n("Card"), n("Card"), n("Card"), n("Card")];
+const three = [n("Card"), n("Card"), n("Card")];
+const uneven = matchChildren(four, three);
+assert(
+  uneven[0] === three[0] && uneven[2] === three[2] && uneven[3] === null,
+  "four cards against three leaves the fourth unmatched",
+);
+
+// A name the other frame never uses pairs with nothing, whatever sits at that
+// index -- four mobile icon buttons must not bind to two desktop rows.
+const icons = [n("Icon Container"), n("Icon Container")];
+const rows = [n("Container"), n("Container")];
+assert(
+  matchChildren(icons, rows).every((m) => m === null),
+  "an unused name never binds by position alone",
+);
+
+// Position still resolves within a name, not across the whole list.
+const mixed = matchChildren([n("Heading"), n("Card"), n("Card")], [n("Card"), n("Card")]);
+assert(mixed[0] === null, "the heading has no counterpart");
+assert(mixed[1] !== null && mixed[2] !== null, "both cards still pair");
 
 // appendedGroups: four unmatched siblings all named "Card" stay four groups.
 // Collapsing them on the name alone dropped three of every four service cards.

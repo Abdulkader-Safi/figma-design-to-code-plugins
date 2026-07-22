@@ -34,10 +34,31 @@ assert(/@media \(min-width: 1280px\)/.test(css.combined), "xl media query presen
 const media = css.combined.slice(css.combined.indexOf("@media (min-width: 1280px)"));
 assert(media.includes("font-size: 58px"), "xl override present");
 assert(!media.includes("color:"), "unchanged color not restated at xl");
-// Root is fluid, not pinned to 390px.
+// Root is fluid, but capped at the widest frame and centred so the largest
+// layout does not stretch edge to edge on a monitor wider than the design.
 assert(css.combined.includes("width: 100%"), "root width is fluid");
-assert(!/width: 390px/.test(css.combined), "root not pinned to base width");
+assert(!/[^-]width: 390px/.test(css.combined), "root not pinned to base width");
+assert(css.combined.includes("max-width: 1440px"), "root capped at the widest frame");
+assert(css.combined.includes("margin: 0 auto"), "root centred");
+assert(!media.includes("max-width"), "cap is declared once, not per breakpoint");
 assert(css.combined.includes("Digital Solutions"), "text content present");
+
+// A property set at one breakpoint and absent at the next is reset, not leaked.
+const pinned: MergedNode = {
+  tag: "section",
+  className: "sec-9",
+  kind: "element",
+  rulesByToken: {
+    base: { "align-self": "stretch" },
+    lg: { "align-self": "stretch", width: "1360px" },
+    xl: { "align-self": "stretch" },
+  },
+  presentAt: ["base", "lg", "xl"],
+  children: [],
+};
+const leakCss = emitMerged({ ...root, presentAt: ["base", "lg", "xl"], rulesByToken: { ...root.rulesByToken, lg: root.rulesByToken.base! }, children: [pinned] }, { title: "Home", tailwind: false, fonts: new Map(), pageBg: null });
+const xlBlock = leakCss.combined.slice(leakCss.combined.indexOf("@media (min-width: 1280px)"));
+assert(xlBlock.includes("width: initial"), `laptop width released at xl:\n${xlBlock.slice(0, 300)}`);
 
 // Tailwind mode.
 const tw = emitMerged(root, { title: "Home", tailwind: true, fonts: new Map(), pageBg: "#0c0b0a" });
