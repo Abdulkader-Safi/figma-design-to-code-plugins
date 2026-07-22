@@ -110,7 +110,11 @@ export function createImageStore(opts: ImageStoreOpts = {}): ImageStore {
         // reference rather than being guessed from the node's box.
         const size = await img.getSizeAsync();
         out = {
-          ref: `url("${store(await img.getBytesAsync())}")`,
+          // Unquoted on purpose. In Tailwind mode this value lands inside a
+          // class attribute as bg-[url(...)], and a double quote there ends the
+          // attribute and breaks the markup. Paths are generated here and never
+          // contain spaces, so quotes buy nothing.
+          ref: `url(${store(await img.getBytesAsync())})`,
           width: size.width,
           height: size.height,
         };

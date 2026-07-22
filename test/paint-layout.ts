@@ -84,6 +84,12 @@ const html = async (frame: Fake) => {
   return out.combined;
 };
 
+const tailwind = async (frame: Fake) => {
+  const [live] = hydrateFrames([frame as never]);
+  const out = await generate(live, { semantic: false, tailwind: true });
+  return out.combined;
+};
+
 // --- 1. A container with an image fill keeps its children -------------------
 // This is the bug that deleted the hero: hasImageFill made any node with an
 // image fill an <img>, so everything inside it vanished.
@@ -182,6 +188,23 @@ const plain = await html({
 });
 assert(plain.includes("background: #ff0000"), "one plain paint is one background");
 assert(!plain.includes("-fill0"), "one plain paint needs no overlay element");
+
+// --- 1b. Tailwind mode: nothing may break the class attribute ----------------
+// A utility value lands inside class="...", so a double quote in it ends the
+// attribute and the rest of the element becomes stray text. An image background
+// shipped as bg-[url("images/img-0.png")] and every image after it was lost.
+const tw = await tailwind({
+  ...BOX,
+  name: "Page",
+  width: 1440,
+  layoutMode: "VERTICAL",
+  fills: [solid(0.05, 0.05, 0.05)],
+  children: [overlaySection],
+});
+for (const attr of tw.match(/class="[^"]*"/g) || []) {
+  assert(!attr.slice(7, -1).includes('"'), `no quote inside a class attribute: ${attr.slice(0, 90)}`);
+}
+assert(/bg-\[image:url\(images\/img-\d+\.png\)\]/.test(tw), `image background is a real utility:\n${(tw.match(/bg-\[[^\]]*\]/g) || []).slice(0, 3)}`);
 
 // --- 2. Negative gap --------------------------------------------------------
 // CSS gap cannot be negative, so the overlap moves to sibling margins. Figma's
